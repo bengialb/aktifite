@@ -118,7 +118,7 @@ export default function AppHome() {
   ]);
 
   // ---- State: messages (in-memory) ----
-  const [messages, setMessages] = useState<Message[]>([
+  const [messages] = useState<Message[]>([
     {
       id: uid(),
       from: "Ece",
