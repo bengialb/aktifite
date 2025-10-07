@@ -1,6 +1,6 @@
 /* eslint-disable */
 // @ts-nocheck
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Calendar,
   MapPin,
@@ -203,7 +203,7 @@ const SportsApp = () => {
       const mapped = data.map((act) => {
         const locationInfo = normalizeLocationDetails(act.location);
         const cityLabel = locationInfo.city || act.city || '';
-        const districtLabel = locationInfo.district || '';
+        const districtLabel = locationInfo.district || act.district || '';
         const combinedLocationLabel = [cityLabel, districtLabel].filter(Boolean).join(' / ') || locationInfo.name;
 
         return {
@@ -246,6 +246,7 @@ const SportsApp = () => {
 
   const [filterSport, setFilterSport] = useState('all');
   const [filterCity, setFilterCity] = useState('all');
+  const [filterDistrict, setFilterDistrict] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
 
   const [newActivity, setNewActivity] = useState({
@@ -319,15 +320,37 @@ const SportsApp = () => {
     }
 
     if (typeof rawLocation === 'string') {
+      const trimmed = rawLocation.trim();
+      if (!trimmed) {
+        return { name: '', details: null, city: '', district: '' };
+      }
+
       try {
-        const parsed = JSON.parse(rawLocation);
+        const parsed = JSON.parse(trimmed);
         if (parsed && typeof parsed === 'object') {
           return parseLocationObject(parsed);
         }
       } catch (error) {
-        return { name: rawLocation, details: null, city: '', district: '' };
+        const separators = ['/', ','];
+        for (const separator of separators) {
+          if (trimmed.includes(separator)) {
+            const parts = trimmed
+              .split(separator)
+              .map((part) => part.trim())
+              .filter(Boolean);
+            if (parts.length >= 2) {
+              return {
+                name: trimmed,
+                details: null,
+                city: parts[0],
+                district: parts[1]
+              };
+            }
+          }
+        }
+        return { name: trimmed, details: null, city: '', district: '' };
       }
-      return { name: rawLocation, details: null, city: '', district: '' };
+      return { name: trimmed, details: null, city: '', district: '' };
     }
 
     return { name: '', details: null, city: '', district: '' };
@@ -395,11 +418,19 @@ const SportsApp = () => {
       enhancedLocation = { ...enhancedLocation, ...autoImage };
     }
 
+    const normalizedLocation = normalizeLocationDetails(enhancedLocation);
+    const mergedLocationDetails = {
+      ...(enhancedLocation || {}),
+      ...(normalizedLocation.details || {}),
+      city: normalizedLocation.city,
+      district: normalizedLocation.district
+    };
+
     setNewActivity((prev) => ({
       ...prev,
-      city: enhancedLocation.city || prev.city,
-      district: enhancedLocation.district || prev.district,
-      locationDetails: enhancedLocation
+      city: normalizedLocation.city || prev.city,
+      district: normalizedLocation.district || prev.district,
+      locationDetails: mergedLocationDetails
     }));
   };
 
@@ -500,8 +531,7 @@ const SportsApp = () => {
       !newActivity.date ||
       !newActivity.startTime ||
       !newActivity.endTime ||
-      !newActivity.locationDetails?.name ||
-      !newActivity.city
+      !newActivity.locationDetails?.name
     ) {
       alert('Lütfen tüm gerekli alanları doldurun!');
       return;
@@ -514,6 +544,10 @@ const SportsApp = () => {
 
     const timeRange = `${newActivity.startTime} - ${newActivity.endTime}`;
 
+    const normalizedLocation = normalizeLocationDetails(newActivity.locationDetails);
+    const finalCity = normalizedLocation.city || newActivity.city;
+    const finalDistrict = normalizedLocation.district || newActivity.district;
+
     const locationPayload = newActivity.locationDetails
       ? {
           ...newActivity.locationDetails,
@@ -522,7 +556,9 @@ const SportsApp = () => {
             : parseFloat(newActivity.locationDetails.lat || 0),
           lng: typeof newActivity.locationDetails.lng === 'number'
             ? newActivity.locationDetails.lng
-            : parseFloat(newActivity.locationDetails.lng || 0)
+            : parseFloat(newActivity.locationDetails.lng || 0),
+          city: finalCity,
+          district: finalDistrict
         }
       : null;
 
@@ -535,7 +571,7 @@ const SportsApp = () => {
         description: newActivity.description,
         date: newActivity.date,
         time: timeRange,
-        city: newActivity.city,
+        city: finalCity,
         location: locationPayload ? JSON.stringify(locationPayload) : newActivity.locationDetails?.name || '',
         max_participants: parseInt(newActivity.maxParticipants)
       })
@@ -555,7 +591,7 @@ const SportsApp = () => {
       console.error('Organizatör katılımcı olarak eklenemedi:', participantError);
     }
 
-    const combinedLocationLabel = [newActivity.city, newActivity.district].filter(Boolean).join(' / ');
+    const combinedLocationLabel = [finalCity, finalDistrict].filter(Boolean).join(' / ');
     const activity = {
       id: data.id,
       sport: data.sport_type,
@@ -564,8 +600,8 @@ const SportsApp = () => {
       time: data.time,
       location: combinedLocationLabel,
       locationDetails: locationPayload || newActivity.locationDetails,
-      city: newActivity.city,
-      district: newActivity.district,
+      city: finalCity,
+      district: finalDistrict,
       maxParticipants: data.max_participants,
       currentParticipants: 1,
       createdBy: { id: currentUser.id, name: currentUser.name, avatar: currentUser.avatar },
@@ -579,8 +615,8 @@ const SportsApp = () => {
     setActivities([activity, ...activities]);
     setCityOptions((prev) => {
       const next = new Set(prev);
-      if (newActivity.city) {
-        next.add(newActivity.city);
+      if (finalCity) {
+        next.add(finalCity);
       }
       return Array.from(next).sort();
     });
@@ -729,16 +765,37 @@ const SportsApp = () => {
     return date.toLocaleDateString('tr-TR');
   };
 
+  const districtOptions = useMemo(() => {
+    const relevantActivities =
+      filterCity === 'all' ? activities : activities.filter((activity) => activity.city === filterCity);
+
+    return Array.from(
+      new Set(
+        relevantActivities
+          .map((activity) => activity.district)
+          .filter((value) => typeof value === 'string' && value.trim().length > 0)
+      )
+    ).sort();
+  }, [activities, filterCity]);
+
+  useEffect(() => {
+    if (filterDistrict !== 'all' && !districtOptions.includes(filterDistrict)) {
+      setFilterDistrict('all');
+    }
+  }, [districtOptions, filterDistrict]);
+
   const filteredActivities = activities.filter(activity => {
     const matchesSport = filterSport === 'all' || activity.sport === filterSport;
     const matchesCity = filterCity === 'all' || activity.city === filterCity;
+    const matchesDistrict = filterDistrict === 'all' || activity.district === filterDistrict;
     const searchValue = searchTerm.toLowerCase();
     const matchesSearch =
       activity.title.toLowerCase().includes(searchValue) ||
       activity.sport.toLowerCase().includes(searchValue) ||
       (activity.location || '').toLowerCase().includes(searchValue) ||
+      (activity.city || '').toLowerCase().includes(searchValue) ||
       (activity.district || '').toLowerCase().includes(searchValue);
-    return matchesSport && matchesCity && matchesSearch;
+    return matchesSport && matchesCity && matchesDistrict && matchesSearch;
   });
 
   const ActivityCard = ({ activity }) => {
@@ -801,11 +858,14 @@ const SportsApp = () => {
         {locationDetails && (
           <div className="mt-4 space-y-3">
             {locationDetails.imageUrl && (
-              <div className="overflow-hidden rounded-xl border border-gray-100">
+              <div
+                className="relative w-full overflow-hidden rounded-xl border border-gray-100 bg-gray-50 flex items-center justify-center"
+                style={{ aspectRatio: '16 / 9' }}
+              >
                 <img
                   src={locationDetails.imageUrl}
                   alt={locationDetails.name}
-                  className="w-full h-40 object-cover"
+                  className="max-h-full max-w-full object-contain"
                 />
               </div>
             )}
@@ -1035,21 +1095,32 @@ const SportsApp = () => {
                     className="w-full pl-9 sm:pl-10 pr-3 sm:pr-4 py-2 text-sm sm:text-base border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   <select
                     value={filterCity}
                     onChange={(e) => setFilterCity(e.target.value)}
-                  className="flex-1 sm:flex-none px-3 sm:px-4 py-2 text-sm sm:text-base border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                >
-                  <option value="all">Tüm Şehirler</option>
-                  {cityOptions.map(city => (
-                    <option key={city} value={city}>{city}</option>
-                  ))}
-                </select>
+                    className="flex-1 sm:flex-none min-w-[140px] px-3 sm:px-4 py-2 text-sm sm:text-base border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  >
+                    <option value="all">Tüm Şehirler</option>
+                    {cityOptions.map(city => (
+                      <option key={city} value={city}>{city}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={filterDistrict}
+                    onChange={(e) => setFilterDistrict(e.target.value)}
+                    className="flex-1 sm:flex-none min-w-[140px] px-3 sm:px-4 py-2 text-sm sm:text-base border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    disabled={districtOptions.length === 0}
+                  >
+                    <option value="all">Tüm İlçeler</option>
+                    {districtOptions.map(district => (
+                      <option key={district} value={district}>{district}</option>
+                    ))}
+                  </select>
                   <select
                     value={filterSport}
                     onChange={(e) => setFilterSport(e.target.value)}
-                    className="flex-1 sm:flex-none px-3 sm:px-4 py-2 text-sm sm:text-base border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    className="flex-1 sm:flex-none min-w-[140px] px-3 sm:px-4 py-2 text-sm sm:text-base border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   >
                     <option value="all">Tüm Sporlar</option>
                     {sports.map(sport => (
@@ -1387,11 +1458,14 @@ const SportsApp = () => {
               <div>
                 <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-2">Konum Görseli</label>
                 {newActivity.locationDetails?.imageUrl && (
-                  <div className="mb-2 overflow-hidden rounded-xl border border-gray-100">
+                  <div
+                    className="mb-2 relative w-full overflow-hidden rounded-xl border border-gray-100 bg-gray-50 flex items-center justify-center"
+                    style={{ aspectRatio: '16 / 9' }}
+                  >
                     <img
                       src={newActivity.locationDetails.imageUrl}
                       alt={newActivity.locationDetails.name}
-                      className="w-full h-40 object-cover"
+                      className="max-h-full max-w-full object-contain"
                     />
                   </div>
                 )}
