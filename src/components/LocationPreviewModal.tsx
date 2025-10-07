@@ -69,11 +69,14 @@ const LocationPreviewModal = ({ location, onClose }) => {
         </div>
 
         {location.imageUrl && (
-          <div className="relative">
+          <div
+            className="relative w-full bg-gray-50 flex items-center justify-center"
+            style={{ aspectRatio: '16 / 9' }}
+          >
             <img
               src={location.imageUrl}
               alt={location.name}
-              className="w-full h-64 object-cover"
+              className="max-h-full max-w-full object-contain"
             />
             {location.imageSource === 'google' && location.imageContext && (
               <a
