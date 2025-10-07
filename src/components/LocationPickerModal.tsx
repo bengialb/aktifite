@@ -32,23 +32,49 @@ const getAddressObject = (info) => {
 
 const extractLocationParts = (info) => {
   const address = getAddressObject(info);
-  const cityCandidate =
-    info?.city ||
-    address.city ||
-    address.town ||
-    address.village ||
-    address.municipality ||
-    address.state_district ||
-    address.state ||
-    '';
-  const districtCandidate =
-    info?.district ||
-    address.district ||
-    address.county ||
-    address.suburb ||
-    address.neighbourhood ||
-    address.village ||
-    '';
+  const normalizeString = (value) =>
+    typeof value === 'string' && value.trim().length > 0 ? value.trim() : '';
+  const pickFirstValid = (candidates = []) => {
+    for (const candidate of candidates) {
+      const normalized = normalizeString(candidate);
+      if (normalized) return normalized;
+    }
+    return '';
+  };
+
+  const cityCandidates = [
+    info?.city,
+    address.city,
+    address.town,
+    address.municipality,
+    address.village,
+    address.state,
+    address.province,
+    address.region
+  ];
+
+  const districtCandidates = [
+    info?.district,
+    address.district,
+    address.county,
+    address.state_district,
+    address.city_district,
+    address.suburb,
+    address.neighbourhood,
+    address.village,
+    address.hamlet
+  ];
+
+  let cityCandidate = pickFirstValid(cityCandidates);
+  let districtCandidate = pickFirstValid(districtCandidates);
+
+  if (cityCandidate && districtCandidate && cityCandidate.toLowerCase() === districtCandidate.toLowerCase()) {
+    const filteredDistricts = districtCandidates.filter((candidate) => {
+      const normalized = normalizeString(candidate);
+      return normalized && normalized.toLowerCase() !== cityCandidate.toLowerCase();
+    });
+    districtCandidate = pickFirstValid(filteredDistricts);
+  }
 
   return {
     city: cityCandidate,
