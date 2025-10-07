@@ -274,6 +274,16 @@ const SportsApp = () => {
       return { name: '', details: null, city: '', district: '' };
     }
 
+    const normalizeString = (value) =>
+      typeof value === 'string' && value.trim().length > 0 ? value.trim() : '';
+    const pickFirstValid = (candidates = []) => {
+      for (const candidate of candidates) {
+        const normalized = normalizeString(candidate);
+        if (normalized) return normalized;
+      }
+      return '';
+    };
+
     const parseLocationObject = (locationObject) => {
       const lat =
         locationObject.lat !== undefined
@@ -284,23 +294,39 @@ const SportsApp = () => {
           ? (typeof locationObject.lng === 'string' ? parseFloat(locationObject.lng) : locationObject.lng)
           : null;
       const addressDetails = locationObject.addressDetails || locationObject.address || {};
-      const cityCandidate =
-        locationObject.city ||
-        addressDetails.city ||
-        addressDetails.town ||
-        addressDetails.village ||
-        addressDetails.municipality ||
-        addressDetails.state_district ||
-        addressDetails.state ||
-        '';
-      const districtCandidate =
-        locationObject.district ||
-        addressDetails.district ||
-        addressDetails.county ||
-        addressDetails.suburb ||
-        addressDetails.neighbourhood ||
-        addressDetails.village ||
-        '';
+      const cityCandidates = [
+        locationObject.city,
+        addressDetails.city,
+        addressDetails.town,
+        addressDetails.municipality,
+        addressDetails.village,
+        addressDetails.state,
+        addressDetails.province,
+        addressDetails.region
+      ];
+      const districtCandidates = [
+        locationObject.district,
+        addressDetails.district,
+        addressDetails.county,
+        addressDetails.state_district,
+        addressDetails.city_district,
+        addressDetails.suburb,
+        addressDetails.neighbourhood,
+        addressDetails.village,
+        addressDetails.hamlet
+      ];
+
+      let cityCandidate = pickFirstValid(cityCandidates);
+      let districtCandidate = pickFirstValid(districtCandidates);
+
+      if (cityCandidate && districtCandidate && cityCandidate.toLowerCase() === districtCandidate.toLowerCase()) {
+        const filteredDistricts = districtCandidates.filter((candidate) => {
+          const normalized = normalizeString(candidate);
+          return normalized && normalized.toLowerCase() !== cityCandidate.toLowerCase();
+        });
+        districtCandidate = pickFirstValid(filteredDistricts);
+      }
+
       const combinedLocationLabel = [cityCandidate, districtCandidate].filter(Boolean).join(' / ');
 
       return {
@@ -411,27 +437,55 @@ const SportsApp = () => {
 
     setLocationImageError('');
 
-    let enhancedLocation = { ...location };
     const query = location.displayName || location.name;
     const autoImage = await fetchGoogleImageForLocation(query);
-    if (autoImage) {
-      enhancedLocation = { ...enhancedLocation, ...autoImage };
-    }
+    const normalizedLocation = normalizeLocationDetails(location);
 
-    const normalizedLocation = normalizeLocationDetails(enhancedLocation);
-    const mergedLocationDetails = {
-      ...(enhancedLocation || {}),
-      ...(normalizedLocation.details || {}),
-      city: normalizedLocation.city,
-      district: normalizedLocation.district
-    };
+    setNewActivity((prev) => {
+      const baseDetails = {
+        ...(location || {}),
+        ...(normalizedLocation.details || {}),
+        city: normalizedLocation.city,
+        district: normalizedLocation.district
+      };
 
-    setNewActivity((prev) => ({
-      ...prev,
-      city: normalizedLocation.city || prev.city,
-      district: normalizedLocation.district || prev.district,
-      locationDetails: mergedLocationDetails
-    }));
+      const hasManualImage =
+        prev.locationDetails?.imageSource === 'upload' &&
+        typeof prev.locationDetails?.imageUrl === 'string' &&
+        prev.locationDetails.imageUrl.trim().length > 0;
+
+      const preservedImage = hasManualImage
+        ? {
+            imageUrl: prev.locationDetails.imageUrl,
+            imageSource: 'upload',
+            imageName: prev.locationDetails.imageName || null
+          }
+        : null;
+
+      const previousImage =
+        !hasManualImage &&
+        typeof prev.locationDetails?.imageUrl === 'string' &&
+        prev.locationDetails.imageUrl.trim().length > 0
+          ? {
+              imageUrl: prev.locationDetails.imageUrl,
+              imageSource: prev.locationDetails.imageSource || null,
+              imageName: prev.locationDetails.imageName || null,
+              imageContext: prev.locationDetails.imageContext || null
+            }
+          : null;
+
+      const imageData = preservedImage || autoImage || previousImage || {};
+
+      return {
+        ...prev,
+        city: normalizedLocation.city || prev.city,
+        district: normalizedLocation.district || prev.district,
+        locationDetails: {
+          ...baseDetails,
+          ...imageData
+        }
+      };
+    });
   };
 
   const handleLocationImageUpload = (event) => {
@@ -461,6 +515,40 @@ const SportsApp = () => {
         ? { ...prev.locationDetails, imageUrl: null, imageSource: null, imageName: null }
         : null
     }));
+  };
+
+  const toNumericCoordinate = (value) => {
+    if (typeof value === 'number' && Number.isFinite(value)) return value;
+    if (typeof value === 'string' && value.trim() !== '') {
+      const parsed = parseFloat(value);
+      return Number.isFinite(parsed) ? parsed : null;
+    }
+    return null;
+  };
+
+  const sanitizeLocationDetailsForStorage = (details, city, district) => {
+    if (!details) return null;
+
+    const lat = toNumericCoordinate(details.lat);
+    const lng = toNumericCoordinate(details.lng);
+
+    const sanitized = {
+      ...details,
+      lat,
+      lng,
+      city: city || '',
+      district: district || ''
+    };
+
+    if (typeof sanitized.imageUrl === 'string' && sanitized.imageUrl.trim().startsWith('data:')) {
+      if (sanitized.imageSource === 'upload') {
+        sanitized.imageUrl = null;
+      } else {
+        sanitized.imageUrl = sanitized.imageUrl.trim();
+      }
+    }
+
+    return sanitized;
   };
 
   const openLocationPreview = (location) => {
@@ -548,15 +636,14 @@ const SportsApp = () => {
     const finalCity = normalizedLocation.city || newActivity.city;
     const finalDistrict = normalizedLocation.district || newActivity.district;
 
-    const locationPayload = newActivity.locationDetails
+    const locationPayloadForStorage = sanitizeLocationDetailsForStorage(
+      newActivity.locationDetails,
+      finalCity,
+      finalDistrict
+    );
+    const clientLocationDetails = newActivity.locationDetails
       ? {
           ...newActivity.locationDetails,
-          lat: typeof newActivity.locationDetails.lat === 'number'
-            ? newActivity.locationDetails.lat
-            : parseFloat(newActivity.locationDetails.lat || 0),
-          lng: typeof newActivity.locationDetails.lng === 'number'
-            ? newActivity.locationDetails.lng
-            : parseFloat(newActivity.locationDetails.lng || 0),
           city: finalCity,
           district: finalDistrict
         }
@@ -572,7 +659,7 @@ const SportsApp = () => {
         date: newActivity.date,
         time: timeRange,
         city: finalCity,
-        location: locationPayload ? JSON.stringify(locationPayload) : newActivity.locationDetails?.name || '',
+        location: locationPayloadForStorage ? JSON.stringify(locationPayloadForStorage) : newActivity.locationDetails?.name || '',
         max_participants: parseInt(newActivity.maxParticipants)
       })
       .select('*')
@@ -599,7 +686,7 @@ const SportsApp = () => {
       date: data.date,
       time: data.time,
       location: combinedLocationLabel,
-      locationDetails: locationPayload || newActivity.locationDetails,
+      locationDetails: clientLocationDetails,
       city: finalCity,
       district: finalDistrict,
       maxParticipants: data.max_participants,
