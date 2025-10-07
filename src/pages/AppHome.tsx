@@ -129,7 +129,7 @@ const SportsApp = () => {
         { id: 2, name: 'Ayşe Kaya', avatar: '👩' }
       ],
       messages: [
-        { senderId: 1, text: 'Merhaba, aktiviteniz için raket getirmem gerekiyor mu?', timestamp: '2025-02-08T10:00:00' },
+        { senderId: 1, text: 'Merhaba, aktifiteniz için raket getirmem gerekiyor mu?', timestamp: '2025-02-08T10:00:00' },
         { senderId: 2, text: 'Merhaba! Evet, raket getirmeniz gerekiyor. Top bizde var.', timestamp: '2025-02-08T10:05:00' },
         { senderId: 1, text: 'Tamam, teşekkürler! Görüşmek üzere 👍', timestamp: '2025-02-08T10:06:00' }
       ],
@@ -164,7 +164,7 @@ const SportsApp = () => {
     {
       id: 1,
       type: 'request_received',
-      message: 'Ali Demir "Sabah Tenis Maçı" aktivitenize katılmak istiyor',
+      message: 'Ali Demir "Sabah Tenis Maçı" aktifitenize katılmak istiyor',
       activityId: 1,
       userId: 3,
       read: false,
@@ -174,7 +174,7 @@ const SportsApp = () => {
     {
       id: 2,
       type: 'request_accepted',
-      message: 'Yoga Seansı aktivitesine katılım isteğiniz onaylandı!',
+      message: 'Yoga Seansı aktifitesine katılım isteğiniz onaylandı!',
       activityId: 3,
       read: false,
       timestamp: '2025-02-08T09:15:00',
@@ -183,7 +183,7 @@ const SportsApp = () => {
     {
       id: 3,
       type: 'request_rejected',
-      message: 'Futbol Maçı aktivitesine katılım isteğiniz reddedildi',
+      message: 'Futbol Maçı aktifitesine katılım isteğiniz reddedildi',
       activityId: 4,
       read: true,
       timestamp: '2025-02-07T18:00:00',
@@ -201,7 +201,7 @@ const SportsApp = () => {
         .order('created_at', { ascending: false });
 
       if (error) {
-        console.error('Aktiviteler alınamadı:', error);
+        console.error('Aktifiteler alınamadı:', error);
         return;
       }
 
@@ -502,7 +502,7 @@ const SportsApp = () => {
       .single();
 
     if (error) {
-      console.error('Aktivite oluşturulamadı:', error);
+      console.error('Aktifite oluşturulamadı:', error);
       return;
     }
 
@@ -536,7 +536,7 @@ const SportsApp = () => {
     const newNotification = {
       id: notifications.length + 1,
       type: 'activity_created',
-      message: `"${activity.title}" aktivitesi başarıyla oluşturuldu!`,
+      message: `"${activity.title}" aktifitesi başarıyla oluşturuldu!`,
       activityId: activity.id,
       read: false,
       timestamp: new Date().toISOString(),
@@ -570,7 +570,7 @@ const SportsApp = () => {
           const newNotification = {
             id: notifications.length + 1,
             type: 'request_sent',
-            message: `"${activity.title}" aktivitesine katılım isteği gönderildi`,
+            message: `"${activity.title}" aktifitesine katılım isteği gönderildi`,
             activityId: activityId,
             read: false,
             timestamp: new Date().toISOString(),
@@ -608,7 +608,7 @@ const SportsApp = () => {
           const newNotification = {
             id: notifications.length + 1,
             type: 'request_accepted',
-            message: `${user.name} "${activity.title}" aktivitesine kabul edildi`,
+            message: `${user.name} "${activity.title}" aktifitesine kabul edildi`,
             activityId: activityId,
             read: false,
             timestamp: new Date().toISOString(),
@@ -637,7 +637,7 @@ const SportsApp = () => {
         const newNotification = {
           id: notifications.length + 1,
           type: 'request_rejected',
-          message: `${user.name} "${activity.title}" aktivitesine reddedildi`,
+          message: `${user.name} "${activity.title}" aktifitesine reddedildi`,
           activityId: activityId,
           read: false,
           timestamp: new Date().toISOString(),
@@ -869,7 +869,7 @@ const SportsApp = () => {
         {isFull && !isParticipant && !isCreator && (
           <div className="mt-4 flex items-center justify-between">
             <div className="text-sm text-red-600 font-medium">
-              🚫 Aktivite dolu
+              🚫 Aktifite dolu
             </div>
             <button
               onClick={() => handleSendMessage(activity)}
@@ -942,7 +942,7 @@ const SportsApp = () => {
             }`}
           >
             <Home className="w-4 h-4 sm:w-5 sm:h-5" />
-            <span className="font-medium text-xs sm:text-base">Aktiviteler</span>
+            <span className="font-medium text-xs sm:text-base">Aktifiteler</span>
           </button>
           <button
             onClick={() => setCurrentView('create')}
@@ -972,7 +972,7 @@ const SportsApp = () => {
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4 sm:w-5 sm:h-5" />
                   <input
                     type="text"
-                    placeholder="Aktivite ara..."
+                    placeholder="Aktifite ara..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="w-full pl-9 sm:pl-10 pr-3 sm:pr-4 py-2 text-sm sm:text-base border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
@@ -1010,7 +1010,7 @@ const SportsApp = () => {
                 ))
               ) : (
                 <div className="bg-white rounded-xl shadow-lg p-12 text-center">
-                  <p className="text-gray-500">Henüz aktivite bulunamadı</p>
+                  <p className="text-gray-500">Henüz aktifite bulunamadı</p>
                 </div>
               )}
             </div>
@@ -1197,11 +1197,11 @@ const SportsApp = () => {
 
         {currentView === 'create' && (
           <div className="bg-white rounded-2xl shadow-lg p-6">
-            <h2 className="text-2xl font-bold text-gray-900 mb-6">Yeni Aktivite Oluştur</h2>
+            <h2 className="text-2xl font-bold text-gray-900 mb-6">Yeni Aktifite Oluştur</h2>
 
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Spor Türü</label>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Aktifite Türü</label>
                 <div className="relative">
                   <select
                     value={newActivity.sport}
@@ -1237,7 +1237,7 @@ const SportsApp = () => {
                 <textarea
                   value={newActivity.description}
                   onChange={(e) => setNewActivity({...newActivity, description: e.target.value})}
-                  placeholder="Aktivite hakkında detaylar..."
+                  placeholder="Aktifite hakkında detaylar..."
                   rows="3"
                   className="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
                 />
@@ -1391,7 +1391,7 @@ const SportsApp = () => {
                 className="w-full bg-blue-600 text-white py-3 px-6 rounded-lg hover:bg-blue-700 transition-colors font-medium flex items-center justify-center gap-2"
               >
                 <Plus className="w-5 h-5" />
-                Aktivite Oluştur
+                Aktifite Oluştur
               </button>
             </div>
           </div>
@@ -1450,7 +1450,7 @@ const SportsApp = () => {
               </div>
 
               <div className="bg-gray-50 rounded-lg p-4">
-                <h3 className="font-semibold text-gray-800 mb-3">Yaklaşan Aktivitelerim</h3>
+                <h3 className="font-semibold text-gray-800 mb-3">Yaklaşan Aktifitelerim</h3>
                 {activities
                   .filter(a => a.participants.some(p => p.id === currentUser.id))
                   .slice(0, 3)
