@@ -31,6 +31,24 @@ import LocationPickerModal from '@/components/LocationPickerModal';
 import LocationPreviewModal from '@/components/LocationPreviewModal';
 import { TURKISH_PROVINCES } from '@/data/turkeyProvinces';
 
+const PRIORITY_CITIES = ['İstanbul', 'İzmir', 'Ankara'];
+
+const sortCitiesWithPriority = (cities) => {
+  const validCities = cities
+    .filter((city) => typeof city === 'string')
+    .map((city) => city.trim())
+    .filter((city) => city.length > 0);
+
+  const uniqueCities = Array.from(new Set(validCities));
+  const prioritySet = new Set(PRIORITY_CITIES);
+  const prioritized = PRIORITY_CITIES.filter((city) => uniqueCities.includes(city));
+  const rest = uniqueCities
+    .filter((city) => !prioritySet.has(city))
+    .sort((a, b) => a.localeCompare(b, 'tr', { sensitivity: 'base' }));
+
+  return [...prioritized, ...rest];
+};
+
 const SportsApp = () => {
   const navigate = useNavigate();
   const storedUser = JSON.parse(localStorage.getItem('user') || '{}');
@@ -113,6 +131,8 @@ const SportsApp = () => {
   const sports = Object.keys(sportEmojis);
 
   const [cityOptions, setCityOptions] = useState([]);
+
+  const provinceOptions = useMemo(() => sortCitiesWithPriority([...TURKISH_PROVINCES]), []);
 
   const [messages, setMessages] = useState([
     {
@@ -231,15 +251,8 @@ const SportsApp = () => {
       });
 
       setActivities(mapped);
-      setCityOptions(
-        Array.from(
-          new Set(
-            mapped
-              .map((item) => item.city)
-              .filter((value) => typeof value === 'string' && value.trim().length > 0)
-          )
-        ).sort()
-      );
+      const extractedCities = mapped.map((item) => item.city);
+      setCityOptions(sortCitiesWithPriority(extractedCities));
     };
 
     fetchActivities();
@@ -445,13 +458,13 @@ const SportsApp = () => {
     const query = location.displayName || location.name;
     const autoImage = await fetchGoogleImageForLocation(query);
     const normalizedLocation = normalizeLocationDetails(location);
-    const locationDistrict = normalizedLocation.district || normalizedLocation.city || '';
+    const locationDistrict = normalizedLocation.district || '';
 
     setNewActivity((prev) => {
       const baseDetails = {
         ...(location || {}),
         ...(normalizedLocation.details || {}),
-        city: prev.city || normalizedLocation.city,
+        city: normalizedLocation.city || prev.city || '',
         district: locationDistrict
       };
 
@@ -485,7 +498,7 @@ const SportsApp = () => {
       return {
         ...prev,
         city: prev.city,
-        district: locationDistrict || prev.district,
+        district: locationDistrict,
         locationDetails: {
           ...baseDetails,
           ...imageData
@@ -645,7 +658,7 @@ const SportsApp = () => {
 
     const normalizedLocation = normalizeLocationDetails(newActivity.locationDetails);
     const finalCity = newActivity.city || normalizedLocation.city;
-    const finalDistrict = normalizedLocation.district || normalizedLocation.city || newActivity.district;
+    const finalDistrict = normalizedLocation.district || newActivity.district || '';
 
     const locationPayloadForStorage = sanitizeLocationDetailsForStorage(
       newActivity.locationDetails,
@@ -712,13 +725,7 @@ const SportsApp = () => {
     };
 
     setActivities([activity, ...activities]);
-    setCityOptions((prev) => {
-      const next = new Set(prev);
-      if (finalCity) {
-        next.add(finalCity);
-      }
-      return Array.from(next).sort();
-    });
+    setCityOptions((prev) => sortCitiesWithPriority([...prev, finalCity]));
 
     const newNotification = {
       id: notifications.length + 1,
@@ -1517,7 +1524,7 @@ const SportsApp = () => {
                     className="w-full px-3 sm:px-4 py-2 text-sm sm:text-base border rounded-lg focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="">İl seçin</option>
-                    {TURKISH_PROVINCES.map((province) => (
+                    {provinceOptions.map((province) => (
                       <option key={province} value={province}>
                         {province}
                       </option>
@@ -1528,19 +1535,16 @@ const SportsApp = () => {
                   <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-2">İlçe</label>
                   <input
                     type="text"
-                    value={newActivity.district || ''}
-                    onChange={(e) =>
-                      setNewActivity((prev) => ({
-                        ...prev,
-                        district: e.target.value,
-                        locationDetails: prev.locationDetails
-                          ? { ...prev.locationDetails, district: e.target.value }
-                          : prev.locationDetails
-                      }))
-                    }
-                    placeholder="İlçe girin veya haritadan seçin"
-                    className="w-full px-3 sm:px-4 py-2 text-sm sm:text-base border rounded-lg focus:ring-2 focus:ring-blue-500"
+                    value={newActivity.locationDetails?.district || newActivity.district || ''}
+                    readOnly
+                    placeholder="İlçe bilgisi harita seçiminden otomatik alınır"
+                    className={`w-full px-3 sm:px-4 py-2 text-sm sm:text-base border rounded-lg bg-gray-50 ${
+                      newActivity.locationDetails ? 'text-gray-900' : 'text-gray-500'
+                    }`}
                   />
+                  <p className="mt-1 text-[11px] sm:text-xs text-gray-500">
+                    İlçe bilgisi harita üzerinden seçtiğiniz konumdan otomatik alınır.
+                  </p>
                 </div>
               </div>
 
