@@ -298,6 +298,19 @@ const SportsApp = () => {
       return '';
     };
 
+    const removeDuplicates = (values = []) => {
+      const seen = new Set();
+      return values
+        .map((value) => normalizeString(value))
+        .filter((value) => {
+          if (!value) return false;
+          const key = value.toLowerCase();
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+    };
+
     const parseLocationObject = (locationObject) => {
       const lat =
         locationObject.lat !== undefined
@@ -308,7 +321,7 @@ const SportsApp = () => {
           ? (typeof locationObject.lng === 'string' ? parseFloat(locationObject.lng) : locationObject.lng)
           : null;
       const addressDetails = locationObject.addressDetails || locationObject.address || {};
-      const cityCandidates = [
+      const cityCandidates = removeDuplicates([
         locationObject.city,
         addressDetails.city,
         addressDetails.town,
@@ -317,38 +330,74 @@ const SportsApp = () => {
         addressDetails.state,
         addressDetails.province,
         addressDetails.region
-      ];
-      const districtCandidates = [
+      ]);
+      const districtCandidates = removeDuplicates([
         locationObject.district,
         addressDetails.district,
         addressDetails.county,
         addressDetails.state_district,
         addressDetails.city_district,
+        addressDetails.municipality,
+        addressDetails.town,
         addressDetails.suburb,
         addressDetails.neighbourhood,
         addressDetails.village,
         addressDetails.hamlet
-      ];
+      ]);
 
-    let cityCandidate = pickFirstValid(cityCandidates);
-    let districtCandidate = pickFirstValid(districtCandidates);
+      const filterDuplicateCity = (value, cityValue) => {
+        if (!value || !cityValue) return true;
+        return value.toLowerCase() !== cityValue.toLowerCase();
+      };
 
-    if (cityCandidate && districtCandidate && cityCandidate.toLowerCase() === districtCandidate.toLowerCase()) {
-      const filteredDistricts = districtCandidates.filter((candidate) => {
-        const normalized = normalizeString(candidate);
-        return normalized && normalized.toLowerCase() !== cityCandidate.toLowerCase();
-      });
-      districtCandidate = pickFirstValid(filteredDistricts);
-    }
+      const isNeighbourhoodLevel = (value) => {
+        if (!value) return false;
+        const lower = value.toLowerCase();
+        return (
+          lower.includes('mahallesi') ||
+          lower.includes('mahalle') ||
+          lower.includes('neighborhood') ||
+          lower.includes('neighbourhood') ||
+          lower.includes('mah.')
+        );
+      };
 
-    if (!districtCandidate && cityCandidate) {
-      districtCandidate = cityCandidate;
-    }
+      let cityCandidate = pickFirstValid(cityCandidates);
+      const cityCandidateLower = cityCandidate ? cityCandidate.toLowerCase() : '';
 
-    const combinedLocationLabel = [cityCandidate, districtCandidate].filter(Boolean).join(' / ');
+      const normalizedDistricts = districtCandidates.filter((candidate) =>
+        filterDuplicateCity(candidate, cityCandidate)
+      );
 
-    return {
-      name: combinedLocationLabel || locationObject.name || locationObject.displayName || '',
+      const prioritizedDistricts = normalizedDistricts.filter((candidate) => !isNeighbourhoodLevel(candidate));
+      const fallbackDistricts = normalizedDistricts.filter((candidate) => isNeighbourhoodLevel(candidate));
+
+      let districtCandidate = pickFirstValid(prioritizedDistricts);
+      if (!districtCandidate) {
+        districtCandidate = pickFirstValid(fallbackDistricts);
+      }
+
+      if (!districtCandidate && cityCandidate) {
+        districtCandidate = cityCandidate;
+      }
+
+      if (cityCandidateLower && districtCandidate && cityCandidateLower === districtCandidate.toLowerCase()) {
+        const filteredDistricts = prioritizedDistricts.filter(
+          (candidate) => candidate.toLowerCase() !== cityCandidateLower
+        );
+        const fallbackFiltered = fallbackDistricts.filter(
+          (candidate) => candidate.toLowerCase() !== cityCandidateLower
+        );
+        const nextDistrict = pickFirstValid(filteredDistricts) || pickFirstValid(fallbackFiltered);
+        if (nextDistrict) {
+          districtCandidate = nextDistrict;
+        }
+      }
+
+      const combinedLocationLabel = [cityCandidate, districtCandidate].filter(Boolean).join(' / ');
+
+      return {
+        name: combinedLocationLabel || locationObject.name || locationObject.displayName || '',
         details: {
           ...locationObject,
           lat,
@@ -459,13 +508,16 @@ const SportsApp = () => {
     const autoImage = await fetchGoogleImageForLocation(query);
     const normalizedLocation = normalizeLocationDetails(location);
     const locationDistrict = normalizedLocation.district || '';
+    const locationCity = normalizedLocation.city || '';
 
     setNewActivity((prev) => {
+      const resolvedCity = locationCity || prev.city || '';
+      const resolvedDistrict = locationDistrict || prev.district || '';
       const baseDetails = {
         ...(location || {}),
         ...(normalizedLocation.details || {}),
-        city: normalizedLocation.city || prev.city || '',
-        district: locationDistrict
+        city: resolvedCity,
+        district: resolvedDistrict
       };
 
       const hasManualImage =
@@ -497,11 +549,13 @@ const SportsApp = () => {
 
       return {
         ...prev,
-        city: prev.city,
-        district: locationDistrict,
+        city: resolvedCity,
+        district: resolvedDistrict,
         locationDetails: {
           ...baseDetails,
-          ...imageData
+          ...imageData,
+          city: resolvedCity,
+          district: resolvedDistrict
         }
       };
     });
@@ -658,7 +712,7 @@ const SportsApp = () => {
 
     const normalizedLocation = normalizeLocationDetails(newActivity.locationDetails);
     const finalCity = newActivity.city || normalizedLocation.city;
-    const finalDistrict = normalizedLocation.district || newActivity.district || '';
+    const finalDistrict = newActivity.district || normalizedLocation.district || '';
 
     const locationPayloadForStorage = sanitizeLocationDetailsForStorage(
       newActivity.locationDetails,
@@ -1507,47 +1561,6 @@ const SportsApp = () => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                <div>
-                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-2">İl</label>
-                  <select
-                    value={newActivity.city}
-                    onChange={(e) =>
-                      setNewActivity((prev) => ({
-                        ...prev,
-                        city: e.target.value,
-                        locationDetails: prev.locationDetails
-                          ? { ...prev.locationDetails, city: e.target.value }
-                          : prev.locationDetails
-                      }))
-                    }
-                    className="w-full px-3 sm:px-4 py-2 text-sm sm:text-base border rounded-lg focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="">İl seçin</option>
-                    {provinceOptions.map((province) => (
-                      <option key={province} value={province}>
-                        {province}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-2">İlçe</label>
-                  <input
-                    type="text"
-                    value={newActivity.locationDetails?.district || newActivity.district || ''}
-                    readOnly
-                    placeholder="İlçe bilgisi harita seçiminden otomatik alınır"
-                    className={`w-full px-3 sm:px-4 py-2 text-sm sm:text-base border rounded-lg bg-gray-50 ${
-                      newActivity.locationDetails ? 'text-gray-900' : 'text-gray-500'
-                    }`}
-                  />
-                  <p className="mt-1 text-[11px] sm:text-xs text-gray-500">
-                    İlçe bilgisi harita üzerinden seçtiğiniz konumdan otomatik alınır.
-                  </p>
-                </div>
-              </div>
-
               <div className="space-y-3 sm:space-y-4">
                 <div>
                   <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-2">Konum</label>
@@ -1589,6 +1602,54 @@ const SportsApp = () => {
                     )}
                     <p className="text-[11px] sm:text-xs text-gray-500">Konumu haritadan seçerek tüm alanları otomatik doldurun.</p>
                   </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                <div>
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-2">İl</label>
+                  <select
+                    value={newActivity.city}
+                    onChange={(e) =>
+                      setNewActivity((prev) => ({
+                        ...prev,
+                        city: e.target.value,
+                        locationDetails: prev.locationDetails
+                          ? { ...prev.locationDetails, city: e.target.value }
+                          : prev.locationDetails
+                      }))
+                    }
+                    className="w-full px-3 sm:px-4 py-2 text-sm sm:text-base border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">İl seçin</option>
+                    {provinceOptions.map((province) => (
+                      <option key={province} value={province}>
+                        {province}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-2">İlçe</label>
+                  <input
+                    type="text"
+                    value={newActivity.locationDetails?.district || newActivity.district || ''}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setNewActivity((prev) => ({
+                        ...prev,
+                        district: value,
+                        locationDetails: prev.locationDetails
+                          ? { ...prev.locationDetails, district: value }
+                          : prev.locationDetails
+                      }));
+                    }}
+                    placeholder="İlçe bilgisi harita seçiminden otomatik alınır"
+                    className="w-full px-3 sm:px-4 py-2 text-sm sm:text-base border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  />
+                  <p className="mt-1 text-[11px] sm:text-xs text-gray-500">
+                    İlçe bilgisi harita üzerinden seçtiğiniz konumdan otomatik alınır. Gerekirse manuel olarak düzenleyebilirsiniz.
+                  </p>
                 </div>
               </div>
 
