@@ -236,7 +236,8 @@ const SportsApp = () => {
     sport: 'Tenis',
     title: '',
     date: '',
-    time: '',
+    startTime: '',
+    endTime: '',
     location: '',
     city: 'Ankara',
     maxParticipants: 2,
@@ -314,10 +315,17 @@ const SportsApp = () => {
   };
 
   const handleCreateActivity = async () => {
-    if (!newActivity.title || !newActivity.date || !newActivity.time || !newActivity.location) {
+    if (!newActivity.title || !newActivity.date || !newActivity.startTime || !newActivity.endTime || !newActivity.location) {
       alert('Lütfen tüm gerekli alanları doldurun!');
       return;
     }
+
+    if (newActivity.startTime >= newActivity.endTime) {
+      alert('Başlangıç saati bitiş saatinden önce olmalı!');
+      return;
+    }
+
+    const timeRange = `${newActivity.startTime} - ${newActivity.endTime}`;
 
     const { data, error } = await supabase
       .from('activities')
@@ -327,7 +335,7 @@ const SportsApp = () => {
         title: newActivity.title,
         description: newActivity.description,
         date: newActivity.date,
-        time: newActivity.time,
+        time: timeRange,
         city: newActivity.city,
         location: newActivity.location,
         max_participants: parseInt(newActivity.maxParticipants)
@@ -381,7 +389,8 @@ const SportsApp = () => {
       sport: 'Tenis',
       title: '',
       date: '',
-      time: '',
+      startTime: '',
+      endTime: '',
       location: '',
       city: 'Ankara',
       maxParticipants: 2,
@@ -1031,7 +1040,7 @@ const SportsApp = () => {
                 />
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-4">
                 <div>
                   <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-2">Tarih</label>
                   <input
@@ -1042,11 +1051,20 @@ const SportsApp = () => {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-2">Saat</label>
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-2">Başlangıç Saati</label>
                   <input
                     type="time"
-                    value={newActivity.time}
-                    onChange={(e) => setNewActivity({...newActivity, time: e.target.value})}
+                    value={newActivity.startTime}
+                    onChange={(e) => setNewActivity({...newActivity, startTime: e.target.value})}
+                    className="w-full px-3 sm:px-4 py-2 text-sm sm:text-base border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-2">Bitiş Saati</label>
+                  <input
+                    type="time"
+                    value={newActivity.endTime}
+                    onChange={(e) => setNewActivity({...newActivity, endTime: e.target.value})}
                     className="w-full px-3 sm:px-4 py-2 text-sm sm:text-base border rounded-lg focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
