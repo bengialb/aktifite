@@ -260,7 +260,7 @@ const SportsApp = () => {
 
   const [filterSport, setFilterSport] = useState('all');
   const [filterCity, setFilterCity] = useState('all');
-  const [filterDistrict, setFilterDistrict] = useState('all');
+  const [filterMapCity, setFilterMapCity] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
 
   const [newActivity, setNewActivity] = useState({
@@ -925,29 +925,30 @@ const SportsApp = () => {
     return date.toLocaleDateString('tr-TR');
   };
 
-  const districtOptions = useMemo(() => {
+  const mapCityOptions = useMemo(() => {
     const relevantActivities =
       filterCity === 'all' ? activities : activities.filter((activity) => activity.city === filterCity);
 
     return Array.from(
       new Set(
         relevantActivities
-          .map((activity) => activity.district)
+          .map((activity) => activity.locationDetails?.city || activity.city)
           .filter((value) => typeof value === 'string' && value.trim().length > 0)
       )
-    ).sort();
+    ).sort((a, b) => a.localeCompare(b, 'tr', { sensitivity: 'base' }));
   }, [activities, filterCity]);
 
   useEffect(() => {
-    if (filterDistrict !== 'all' && !districtOptions.includes(filterDistrict)) {
-      setFilterDistrict('all');
+    if (filterMapCity !== 'all' && !mapCityOptions.includes(filterMapCity)) {
+      setFilterMapCity('all');
     }
-  }, [districtOptions, filterDistrict]);
+  }, [mapCityOptions, filterMapCity]);
 
   const filteredActivities = activities.filter(activity => {
     const matchesSport = filterSport === 'all' || activity.sport === filterSport;
     const matchesCity = filterCity === 'all' || activity.city === filterCity;
-    const matchesDistrict = filterDistrict === 'all' || activity.district === filterDistrict;
+    const activityMapCity = activity.locationDetails?.city || activity.city;
+    const matchesMapCity = filterMapCity === 'all' || activityMapCity === filterMapCity;
     const searchValue = searchTerm.toLowerCase();
     const matchesSearch =
       activity.title.toLowerCase().includes(searchValue) ||
@@ -955,7 +956,7 @@ const SportsApp = () => {
       (activity.location || '').toLowerCase().includes(searchValue) ||
       (activity.city || '').toLowerCase().includes(searchValue) ||
       (activity.district || '').toLowerCase().includes(searchValue);
-    return matchesSport && matchesCity && matchesDistrict && matchesSearch;
+    return matchesSport && matchesCity && matchesMapCity && matchesSearch;
   });
 
   const ActivityCard = ({ activity }) => {
@@ -1267,14 +1268,14 @@ const SportsApp = () => {
                     ))}
                   </select>
                   <select
-                    value={filterDistrict}
-                    onChange={(e) => setFilterDistrict(e.target.value)}
+                    value={filterMapCity}
+                    onChange={(e) => setFilterMapCity(e.target.value)}
                     className="flex-1 sm:flex-none min-w-[140px] px-3 sm:px-4 py-2 text-sm sm:text-base border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                    disabled={districtOptions.length === 0}
+                    disabled={mapCityOptions.length === 0}
                   >
-                    <option value="all">Tüm İlçeler</option>
-                    {districtOptions.map(district => (
-                      <option key={district} value={district}>{district}</option>
+                    <option value="all">Tüm İller (Harita)</option>
+                    {mapCityOptions.map((city) => (
+                      <option key={city} value={city}>{city}</option>
                     ))}
                   </select>
                   <select
@@ -1630,25 +1631,16 @@ const SportsApp = () => {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-2">İlçe</label>
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-2">İl (Harita)</label>
                   <input
                     type="text"
-                    value={newActivity.locationDetails?.district || newActivity.district || ''}
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      setNewActivity((prev) => ({
-                        ...prev,
-                        district: value,
-                        locationDetails: prev.locationDetails
-                          ? { ...prev.locationDetails, district: value }
-                          : prev.locationDetails
-                      }));
-                    }}
-                    placeholder="İlçe bilgisi harita seçiminden otomatik alınır"
-                    className="w-full px-3 sm:px-4 py-2 text-sm sm:text-base border rounded-lg focus:ring-2 focus:ring-blue-500"
+                    value={newActivity.locationDetails?.city || newActivity.city || ''}
+                    readOnly
+                    placeholder="İl bilgisi harita seçiminden otomatik alınır"
+                    className="w-full px-3 sm:px-4 py-2 text-sm sm:text-base border rounded-lg bg-gray-50 text-gray-600"
                   />
                   <p className="mt-1 text-[11px] sm:text-xs text-gray-500">
-                    İlçe bilgisi harita üzerinden seçtiğiniz konumdan otomatik alınır. Gerekirse manuel olarak düzenleyebilirsiniz.
+                    İl bilgisi harita üzerinden seçtiğiniz konumdan otomatik alınır. Gerekirse yukarıdaki listeden manuel olarak il seçebilirsiniz.
                   </p>
                 </div>
               </div>
