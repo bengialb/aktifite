@@ -1401,18 +1401,7 @@ const SportsApp = () => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                <div>
-                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-2">Şehir / İlçe</label>
-                  <input
-                    type="text"
-                    value={[newActivity.city, newActivity.district].filter(Boolean).join(' / ')}
-                    readOnly
-                    placeholder="Haritadan konum seçildiğinde otomatik dolacak"
-                    className="w-full px-3 sm:px-4 py-2 text-sm sm:text-base border rounded-lg bg-gray-50 focus:outline-none"
-                  />
-                  <p className="text-[11px] sm:text-xs text-gray-500 mt-1">Konumu haritadan seçerek şehir ve ilçeyi otomatik doldurun.</p>
-                </div>
+              <div className="space-y-3 sm:space-y-4">
                 <div>
                   <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-2">Konum</label>
                   <div className="space-y-2">
@@ -1451,6 +1440,7 @@ const SportsApp = () => {
                         {typeof newActivity.locationDetails.lng === 'number' ? newActivity.locationDetails.lng.toFixed(5) : parseFloat(newActivity.locationDetails.lng || 0).toFixed(5)}
                       </p>
                     )}
+                    <p className="text-[11px] sm:text-xs text-gray-500">Konumu haritadan seçerek tüm alanları otomatik doldurun.</p>
                   </div>
                 </div>
               </div>
