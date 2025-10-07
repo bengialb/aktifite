@@ -29,6 +29,7 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import LocationPickerModal from '@/components/LocationPickerModal';
 import LocationPreviewModal from '@/components/LocationPreviewModal';
+import { TURKISH_PROVINCES } from '@/data/turkeyProvinces';
 
 const SportsApp = () => {
   const navigate = useNavigate();
@@ -316,21 +317,25 @@ const SportsApp = () => {
         addressDetails.hamlet
       ];
 
-      let cityCandidate = pickFirstValid(cityCandidates);
-      let districtCandidate = pickFirstValid(districtCandidates);
+    let cityCandidate = pickFirstValid(cityCandidates);
+    let districtCandidate = pickFirstValid(districtCandidates);
 
-      if (cityCandidate && districtCandidate && cityCandidate.toLowerCase() === districtCandidate.toLowerCase()) {
-        const filteredDistricts = districtCandidates.filter((candidate) => {
-          const normalized = normalizeString(candidate);
-          return normalized && normalized.toLowerCase() !== cityCandidate.toLowerCase();
-        });
-        districtCandidate = pickFirstValid(filteredDistricts);
-      }
+    if (cityCandidate && districtCandidate && cityCandidate.toLowerCase() === districtCandidate.toLowerCase()) {
+      const filteredDistricts = districtCandidates.filter((candidate) => {
+        const normalized = normalizeString(candidate);
+        return normalized && normalized.toLowerCase() !== cityCandidate.toLowerCase();
+      });
+      districtCandidate = pickFirstValid(filteredDistricts);
+    }
 
-      const combinedLocationLabel = [cityCandidate, districtCandidate].filter(Boolean).join(' / ');
+    if (!districtCandidate && cityCandidate) {
+      districtCandidate = cityCandidate;
+    }
 
-      return {
-        name: combinedLocationLabel || locationObject.name || locationObject.displayName || '',
+    const combinedLocationLabel = [cityCandidate, districtCandidate].filter(Boolean).join(' / ');
+
+    return {
+      name: combinedLocationLabel || locationObject.name || locationObject.displayName || '',
         details: {
           ...locationObject,
           lat,
@@ -440,13 +445,14 @@ const SportsApp = () => {
     const query = location.displayName || location.name;
     const autoImage = await fetchGoogleImageForLocation(query);
     const normalizedLocation = normalizeLocationDetails(location);
+    const locationDistrict = normalizedLocation.district || normalizedLocation.city || '';
 
     setNewActivity((prev) => {
       const baseDetails = {
         ...(location || {}),
         ...(normalizedLocation.details || {}),
-        city: normalizedLocation.city,
-        district: normalizedLocation.district
+        city: prev.city || normalizedLocation.city,
+        district: locationDistrict
       };
 
       const hasManualImage =
@@ -478,8 +484,8 @@ const SportsApp = () => {
 
       return {
         ...prev,
-        city: normalizedLocation.city || prev.city,
-        district: normalizedLocation.district || prev.district,
+        city: prev.city,
+        district: locationDistrict || prev.district,
         locationDetails: {
           ...baseDetails,
           ...imageData
@@ -625,6 +631,11 @@ const SportsApp = () => {
       return;
     }
 
+    if (!newActivity.city) {
+      alert('Lütfen bir il seçin.');
+      return;
+    }
+
     if (newActivity.startTime >= newActivity.endTime) {
       alert('Başlangıç saati bitiş saatinden önce olmalı!');
       return;
@@ -633,8 +644,8 @@ const SportsApp = () => {
     const timeRange = `${newActivity.startTime} - ${newActivity.endTime}`;
 
     const normalizedLocation = normalizeLocationDetails(newActivity.locationDetails);
-    const finalCity = normalizedLocation.city || newActivity.city;
-    const finalDistrict = normalizedLocation.district || newActivity.district;
+    const finalCity = newActivity.city || normalizedLocation.city;
+    const finalDistrict = normalizedLocation.district || normalizedLocation.city || newActivity.district;
 
     const locationPayloadForStorage = sanitizeLocationDetailsForStorage(
       newActivity.locationDetails,
@@ -659,6 +670,7 @@ const SportsApp = () => {
         date: newActivity.date,
         time: timeRange,
         city: finalCity,
+        district: finalDistrict,
         location: locationPayloadForStorage ? JSON.stringify(locationPayloadForStorage) : newActivity.locationDetails?.name || '',
         max_participants: parseInt(newActivity.maxParticipants)
       })
@@ -1483,6 +1495,50 @@ const SportsApp = () => {
                     type="time"
                     value={newActivity.endTime}
                     onChange={(e) => setNewActivity({...newActivity, endTime: e.target.value})}
+                    className="w-full px-3 sm:px-4 py-2 text-sm sm:text-base border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                <div>
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-2">İl</label>
+                  <select
+                    value={newActivity.city}
+                    onChange={(e) =>
+                      setNewActivity((prev) => ({
+                        ...prev,
+                        city: e.target.value,
+                        locationDetails: prev.locationDetails
+                          ? { ...prev.locationDetails, city: e.target.value }
+                          : prev.locationDetails
+                      }))
+                    }
+                    className="w-full px-3 sm:px-4 py-2 text-sm sm:text-base border rounded-lg focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">İl seçin</option>
+                    {TURKISH_PROVINCES.map((province) => (
+                      <option key={province} value={province}>
+                        {province}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-2">İlçe</label>
+                  <input
+                    type="text"
+                    value={newActivity.district || ''}
+                    onChange={(e) =>
+                      setNewActivity((prev) => ({
+                        ...prev,
+                        district: e.target.value,
+                        locationDetails: prev.locationDetails
+                          ? { ...prev.locationDetails, district: e.target.value }
+                          : prev.locationDetails
+                      }))
+                    }
+                    placeholder="İlçe girin veya haritadan seçin"
                     className="w-full px-3 sm:px-4 py-2 text-sm sm:text-base border rounded-lg focus:ring-2 focus:ring-blue-500"
                   />
                 </div>

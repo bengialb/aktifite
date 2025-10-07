@@ -76,6 +76,10 @@ const extractLocationParts = (info) => {
     districtCandidate = pickFirstValid(filteredDistricts);
   }
 
+  if (!districtCandidate && cityCandidate) {
+    districtCandidate = cityCandidate;
+  }
+
   return {
     city: cityCandidate,
     district: districtCandidate,
