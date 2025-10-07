@@ -22,10 +22,13 @@ import {
   Camera,
   Inbox,
   ArrowLeft,
-  LogOut
+  LogOut,
+  ExternalLink
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
+import LocationPickerModal from '@/components/LocationPickerModal';
+import LocationPreviewModal from '@/components/LocationPreviewModal';
 
 const SportsApp = () => {
   const navigate = useNavigate();
@@ -202,25 +205,30 @@ const SportsApp = () => {
         return;
       }
 
-      const mapped = data.map((act) => ({
-        id: act.id,
-        sport: act.sport_type,
-        title: act.title,
-        date: act.date,
-        time: act.time,
-        location: act.location,
-        city: act.city,
-        maxParticipants: act.max_participants,
-        currentParticipants: act.participants?.length || 0,
-        createdBy: { id: act.organizer_id, name: 'Organizatör', avatar: '👤' },
-        participants: (act.participants || []).map((p) => ({
-          id: p.user_id,
-          name: p.profiles?.full_name || 'Kullanıcı',
-          avatar: '👤'
-        })),
-        requests: [],
-        description: act.description || ''
-      }));
+      const mapped = data.map((act) => {
+        const locationInfo = normalizeLocationDetails(act.location);
+
+        return {
+          id: act.id,
+          sport: act.sport_type,
+          title: act.title,
+          date: act.date,
+          time: act.time,
+          location: locationInfo.name,
+          locationDetails: locationInfo.details,
+          city: act.city,
+          maxParticipants: act.max_participants,
+          currentParticipants: act.participants?.length || 0,
+          createdBy: { id: act.organizer_id, name: 'Organizatör', avatar: '👤' },
+          participants: (act.participants || []).map((p) => ({
+            id: p.user_id,
+            name: p.profiles?.full_name || 'Kullanıcı',
+            avatar: '👤'
+          })),
+          requests: [],
+          description: act.description || ''
+        };
+      });
 
       setActivities(mapped);
     };
@@ -238,13 +246,60 @@ const SportsApp = () => {
     date: '',
     startTime: '',
     endTime: '',
-    location: '',
     city: 'Ankara',
     maxParticipants: 2,
-    description: ''
+    description: '',
+    locationDetails: null
   });
 
+  const [isLocationPickerOpen, setIsLocationPickerOpen] = useState(false);
+  const [locationPreview, setLocationPreview] = useState(null);
+  const [locationImageError, setLocationImageError] = useState('');
+  const [isFetchingLocationImage, setIsFetchingLocationImage] = useState(false);
+
   const unreadNotifications = notifications.filter(n => !n.read).length;
+
+  const normalizeLocationDetails = (rawLocation) => {
+    if (!rawLocation) {
+      return { name: '', details: null };
+    }
+
+    if (typeof rawLocation === 'object' && !Array.isArray(rawLocation)) {
+      const lat = rawLocation.lat !== undefined ? (typeof rawLocation.lat === 'string' ? parseFloat(rawLocation.lat) : rawLocation.lat) : null;
+      const lng = rawLocation.lng !== undefined ? (typeof rawLocation.lng === 'string' ? parseFloat(rawLocation.lng) : rawLocation.lng) : null;
+      return {
+        name: rawLocation.name || rawLocation.displayName || '',
+        details: {
+          ...rawLocation,
+          lat,
+          lng
+        }
+      };
+    }
+
+    if (typeof rawLocation === 'string') {
+      try {
+        const parsed = JSON.parse(rawLocation);
+        const lat = parsed?.lat !== undefined ? (typeof parsed.lat === 'string' ? parseFloat(parsed.lat) : parsed.lat) : null;
+        const lng = parsed?.lng !== undefined ? (typeof parsed.lng === 'string' ? parseFloat(parsed.lng) : parsed.lng) : null;
+        if (parsed && typeof parsed === 'object') {
+          return {
+            name: parsed.name || parsed.displayName || rawLocation,
+            details: {
+              ...parsed,
+              lat,
+              lng
+            }
+          };
+        }
+      } catch (error) {
+        return { name: rawLocation, details: null };
+      }
+      return { name: rawLocation, details: null };
+    }
+
+    return { name: '', details: null };
+  };
 
   const handleProfileImageUpload = (e) => {
     const file = e.target.files[0];
@@ -255,6 +310,97 @@ const SportsApp = () => {
       };
       reader.readAsDataURL(file);
     }
+  };
+
+  const fetchGoogleImageForLocation = async (query) => {
+    if (!query) return null;
+
+    const apiKey = import.meta.env.VITE_GOOGLE_API_KEY;
+    const searchEngineId = import.meta.env.VITE_GOOGLE_CSE_ID;
+
+    if (!apiKey || !searchEngineId) {
+      setLocationImageError('Google görselini otomatik almak için gerekli API anahtarları tanımlı değil. Lütfen görsel yükleyin.');
+      return null;
+    }
+
+    try {
+      setIsFetchingLocationImage(true);
+      setLocationImageError('');
+      const response = await fetch(`https://www.googleapis.com/customsearch/v1?key=${apiKey}&cx=${searchEngineId}&searchType=image&num=1&q=${encodeURIComponent(query)}`);
+      if (!response.ok) throw new Error('Google Custom Search isteği başarısız oldu');
+      const data = await response.json();
+      const firstItem = data.items?.[0];
+      if (firstItem?.link) {
+        return {
+          imageUrl: firstItem.link,
+          imageContext: firstItem.image?.contextLink || firstItem.link,
+          imageWidth: firstItem.image?.width || null,
+          imageHeight: firstItem.image?.height || null,
+          imageSource: 'google'
+        };
+      }
+      setLocationImageError('Google görseli bulunamadı. Lütfen görsel yükleyin.');
+    } catch (error) {
+      console.error('Google görseli alınamadı:', error);
+      setLocationImageError('Google görseli alınamadı. Lütfen görsel yükleyin.');
+    } finally {
+      setIsFetchingLocationImage(false);
+    }
+
+    return null;
+  };
+
+  const handleLocationSelected = async (location) => {
+    setIsLocationPickerOpen(false);
+    if (!location) return;
+
+    setLocationImageError('');
+
+    let enhancedLocation = { ...location };
+    const query = location.displayName || location.name;
+    const autoImage = await fetchGoogleImageForLocation(query);
+    if (autoImage) {
+      enhancedLocation = { ...enhancedLocation, ...autoImage };
+    }
+
+    setNewActivity((prev) => ({
+      ...prev,
+      locationDetails: enhancedLocation
+    }));
+  };
+
+  const handleLocationImageUpload = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      setNewActivity((prev) => ({
+        ...prev,
+        locationDetails: {
+          ...(prev.locationDetails || {}),
+          imageUrl: reader.result,
+          imageSource: 'upload',
+          imageName: file.name
+        }
+      }));
+      setLocationImageError('');
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const clearLocationImage = () => {
+    setNewActivity((prev) => ({
+      ...prev,
+      locationDetails: prev.locationDetails
+        ? { ...prev.locationDetails, imageUrl: null, imageSource: null, imageName: null }
+        : null
+    }));
+  };
+
+  const openLocationPreview = (location) => {
+    if (!location) return;
+    setLocationPreview(location);
   };
 
   const handleSendMessage = (activity) => {
@@ -315,7 +461,7 @@ const SportsApp = () => {
   };
 
   const handleCreateActivity = async () => {
-    if (!newActivity.title || !newActivity.date || !newActivity.startTime || !newActivity.endTime || !newActivity.location) {
+    if (!newActivity.title || !newActivity.date || !newActivity.startTime || !newActivity.endTime || !newActivity.locationDetails?.name) {
       alert('Lütfen tüm gerekli alanları doldurun!');
       return;
     }
@@ -327,6 +473,18 @@ const SportsApp = () => {
 
     const timeRange = `${newActivity.startTime} - ${newActivity.endTime}`;
 
+    const locationPayload = newActivity.locationDetails
+      ? {
+          ...newActivity.locationDetails,
+          lat: typeof newActivity.locationDetails.lat === 'number'
+            ? newActivity.locationDetails.lat
+            : parseFloat(newActivity.locationDetails.lat || 0),
+          lng: typeof newActivity.locationDetails.lng === 'number'
+            ? newActivity.locationDetails.lng
+            : parseFloat(newActivity.locationDetails.lng || 0)
+        }
+      : null;
+
     const { data, error } = await supabase
       .from('activities')
       .insert({
@@ -337,7 +495,7 @@ const SportsApp = () => {
         date: newActivity.date,
         time: timeRange,
         city: newActivity.city,
-        location: newActivity.location,
+        location: locationPayload ? JSON.stringify(locationPayload) : newActivity.locationDetails?.name || '',
         max_participants: parseInt(newActivity.maxParticipants)
       })
       .select('*')
@@ -362,7 +520,8 @@ const SportsApp = () => {
       title: data.title,
       date: data.date,
       time: data.time,
-      location: data.location,
+      location: locationPayload?.name || newActivity.locationDetails?.name || '',
+      locationDetails: locationPayload,
       city: data.city,
       maxParticipants: data.max_participants,
       currentParticipants: 1,
@@ -391,10 +550,10 @@ const SportsApp = () => {
       date: '',
       startTime: '',
       endTime: '',
-      location: '',
       city: 'Ankara',
       maxParticipants: 2,
-      description: ''
+      description: '',
+      locationDetails: null
     });
     setCurrentView('home');
   };
@@ -522,7 +681,7 @@ const SportsApp = () => {
     const matchesCity = filterCity === 'all' || activity.city === filterCity;
     const matchesSearch = activity.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
                           activity.sport.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          activity.location.toLowerCase().includes(searchTerm.toLowerCase());
+                          (activity.location || '').toLowerCase().includes(searchTerm.toLowerCase());
     return matchesSport && matchesCity && matchesSearch;
   });
 
@@ -531,6 +690,16 @@ const SportsApp = () => {
     const isParticipant = activity.participants.some(p => p.id === currentUser.id);
     const hasRequested = activity.requests.some(r => r.id === currentUser.id);
     const isFull = activity.currentParticipants >= activity.maxParticipants;
+    const locationDetails = activity.locationDetails;
+    const numericLat = locationDetails?.lat !== undefined && locationDetails?.lat !== null
+      ? (typeof locationDetails.lat === 'string' ? parseFloat(locationDetails.lat) : locationDetails.lat)
+      : null;
+    const numericLng = locationDetails?.lng !== undefined && locationDetails?.lng !== null
+      ? (typeof locationDetails.lng === 'string' ? parseFloat(locationDetails.lng) : locationDetails.lng)
+      : null;
+    const directionsLink = numericLat !== null && numericLng !== null
+      ? `https://www.google.com/maps/dir/?api=1&destination=${numericLat},${numericLng}`
+      : null;
 
     return (
       <div className="bg-white rounded-xl shadow-lg p-4 sm:p-6 mb-4 hover:shadow-xl transition-shadow">
@@ -571,6 +740,40 @@ const SportsApp = () => {
             <span className="text-xs sm:text-sm">{activity.currentParticipants}/{activity.maxParticipants} Katılımcı</span>
           </div>
         </div>
+
+        {locationDetails && (
+          <div className="mt-4 space-y-3">
+            {locationDetails.imageUrl && (
+              <div className="overflow-hidden rounded-xl border border-gray-100">
+                <img
+                  src={locationDetails.imageUrl}
+                  alt={locationDetails.name}
+                  className="w-full h-40 object-cover"
+                />
+              </div>
+            )}
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+              <button
+                onClick={() => openLocationPreview(locationDetails)}
+                className="inline-flex items-center justify-center gap-2 px-3 py-2 text-sm bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100"
+              >
+                <MapPin className="w-4 h-4" />
+                Haritada Gör
+              </button>
+              {directionsLink && (
+                <a
+                  href={directionsLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center justify-center gap-2 px-3 py-2 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                  Yol Tarifi Al
+                </a>
+              )}
+            </div>
+          </div>
+        )}
 
         <div className="mt-4 pt-4 border-t">
           <p className="text-xs text-gray-600 mb-2">Katılımcılar:</p>
@@ -1085,14 +1288,90 @@ const SportsApp = () => {
                 </div>
                 <div>
                   <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-2">Konum</label>
-                  <input
-                    type="text"
-                    value={newActivity.location}
-                    onChange={(e) => setNewActivity({...newActivity, location: e.target.value})}
-                    placeholder="örn: Ankara Tenis Kulübü"
-                    className="w-full px-3 sm:px-4 py-2 text-sm sm:text-base border rounded-lg focus:ring-2 focus:ring-blue-500"
-                  />
+                  <div className="space-y-2">
+                    <div className="flex flex-col sm:flex-row gap-2">
+                      <input
+                        type="text"
+                        value={newActivity.locationDetails?.name || ''}
+                        readOnly
+                        placeholder="Haritadan konum seçin"
+                        className="flex-1 px-3 sm:px-4 py-2 text-sm sm:text-base border rounded-lg bg-gray-50 focus:outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setIsLocationPickerOpen(true)}
+                        className="px-3 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm"
+                      >
+                        Haritada Seç
+                      </button>
+                      {newActivity.locationDetails && (
+                        <button
+                          type="button"
+                          onClick={() => openLocationPreview(newActivity.locationDetails)}
+                          className="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 text-sm"
+                        >
+                          Önizle
+                        </button>
+                      )}
+                    </div>
+                    {newActivity.locationDetails?.address && (
+                      <p className="text-xs text-gray-500">{newActivity.locationDetails.address}</p>
+                    )}
+                    {newActivity.locationDetails?.lat !== undefined && newActivity.locationDetails?.lng !== undefined && (
+                      <p className="text-xs text-gray-400">
+                        Koordinatlar: {typeof newActivity.locationDetails.lat === 'number' ? newActivity.locationDetails.lat.toFixed(5) : parseFloat(newActivity.locationDetails.lat || 0).toFixed(5)},
+                        {" "}
+                        {typeof newActivity.locationDetails.lng === 'number' ? newActivity.locationDetails.lng.toFixed(5) : parseFloat(newActivity.locationDetails.lng || 0).toFixed(5)}
+                      </p>
+                    )}
+                  </div>
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-2">Konum Görseli</label>
+                {newActivity.locationDetails?.imageUrl && (
+                  <div className="mb-2 overflow-hidden rounded-xl border border-gray-100">
+                    <img
+                      src={newActivity.locationDetails.imageUrl}
+                      alt={newActivity.locationDetails.name}
+                      className="w-full h-40 object-cover"
+                    />
+                  </div>
+                )}
+                <div className="flex flex-wrap items-center gap-2">
+                  <label className="inline-flex items-center gap-2 px-3 py-2 bg-gray-100 text-gray-700 rounded-lg cursor-pointer hover:bg-gray-200 text-sm">
+                    <Camera className="w-4 h-4" />
+                    Görsel Yükle
+                    <input type="file" accept="image/*" className="hidden" onChange={handleLocationImageUpload} />
+                  </label>
+                  {newActivity.locationDetails?.imageUrl && (
+                    <button
+                      type="button"
+                      onClick={clearLocationImage}
+                      className="px-3 py-2 text-sm text-red-600 bg-red-50 rounded-lg hover:bg-red-100"
+                    >
+                      Görseli Kaldır
+                    </button>
+                  )}
+                </div>
+                {isFetchingLocationImage && (
+                  <p className="text-xs text-gray-500 mt-2">Google görseli aranıyor...</p>
+                )}
+                {locationImageError && (
+                  <p className="text-xs text-red-500 mt-2">{locationImageError}</p>
+                )}
+                {newActivity.locationDetails?.imageSource === 'google' && newActivity.locationDetails?.imageContext && (
+                  <a
+                    href={newActivity.locationDetails.imageContext}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-2 inline-flex items-center gap-1 text-xs text-blue-600"
+                  >
+                    <ExternalLink className="w-3 h-3" />
+                    Google görsel kaynağını görüntüle
+                  </a>
+                )}
               </div>
 
               <div>
@@ -1205,6 +1484,18 @@ const SportsApp = () => {
             </div>
           </div>
         )}
+        <LocationPickerModal
+          isOpen={isLocationPickerOpen}
+          onClose={() => setIsLocationPickerOpen(false)}
+          onSelect={handleLocationSelected}
+          initialLocation={newActivity.locationDetails}
+        />
+
+        <LocationPreviewModal
+          location={locationPreview}
+          onClose={() => setLocationPreview(null)}
+        />
+
       </div>
     </div>
   );
