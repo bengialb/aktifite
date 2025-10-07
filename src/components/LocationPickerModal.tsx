@@ -42,7 +42,30 @@ const extractLocationParts = (info) => {
     return '';
   };
 
-  const cityCandidates = [
+  const isNeighbourhoodLevel = (value) => {
+    if (!value) return false;
+    const lower = value.toLowerCase();
+    return (
+      lower.includes('mahallesi') ||
+      lower.includes('mahalle') ||
+      lower.includes('neighborhood') ||
+      lower.includes('neighbourhood') ||
+      lower.includes('mah.')
+    );
+  };
+
+  const removeDuplicates = (values = []) => {
+    const seen = new Set();
+    return values.filter((value) => {
+      const normalized = normalizeString(value);
+      if (!normalized) return false;
+      if (seen.has(normalized.toLowerCase())) return false;
+      seen.add(normalized.toLowerCase());
+      return true;
+    });
+  };
+
+  const cityCandidates = removeDuplicates([
     info?.city,
     address.city,
     address.town,
@@ -51,29 +74,30 @@ const extractLocationParts = (info) => {
     address.state,
     address.province,
     address.region
-  ];
+  ]);
 
-  const districtCandidates = [
+  let cityCandidate = pickFirstValid(cityCandidates);
+
+  const districtCandidates = removeDuplicates([
     info?.district,
     address.district,
     address.county,
     address.state_district,
     address.city_district,
+    address.municipality,
+    address.town,
     address.suburb,
     address.neighbourhood,
     address.village,
     address.hamlet
-  ];
+  ]).filter((candidate) => !cityCandidate || candidate.toLowerCase() !== cityCandidate.toLowerCase());
 
-  let cityCandidate = pickFirstValid(cityCandidates);
-  let districtCandidate = pickFirstValid(districtCandidates);
+  const prioritizedDistricts = districtCandidates.filter((candidate) => !isNeighbourhoodLevel(candidate));
+  const fallbackDistricts = districtCandidates.filter((candidate) => isNeighbourhoodLevel(candidate));
 
-  if (cityCandidate && districtCandidate && cityCandidate.toLowerCase() === districtCandidate.toLowerCase()) {
-    const filteredDistricts = districtCandidates.filter((candidate) => {
-      const normalized = normalizeString(candidate);
-      return normalized && normalized.toLowerCase() !== cityCandidate.toLowerCase();
-    });
-    districtCandidate = pickFirstValid(filteredDistricts);
+  let districtCandidate = pickFirstValid(prioritizedDistricts);
+  if (!districtCandidate) {
+    districtCandidate = pickFirstValid(fallbackDistricts);
   }
 
   if (!districtCandidate && cityCandidate) {
