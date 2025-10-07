@@ -23,10 +23,55 @@ const formatAddress = (result) => {
   return '';
 };
 
+const getAddressObject = (info) => {
+  if (!info) return {};
+  if (info.addressDetails) return info.addressDetails;
+  if (info.address) return info.address;
+  return {};
+};
+
+const extractLocationParts = (info) => {
+  const address = getAddressObject(info);
+  const cityCandidate =
+    info?.city ||
+    address.city ||
+    address.town ||
+    address.village ||
+    address.municipality ||
+    address.state_district ||
+    address.state ||
+    '';
+  const districtCandidate =
+    info?.district ||
+    address.district ||
+    address.county ||
+    address.suburb ||
+    address.neighbourhood ||
+    address.village ||
+    '';
+
+  return {
+    city: cityCandidate,
+    district: districtCandidate,
+    addressDetails: address
+  };
+};
+
+const enrichLocationInfo = (info) => {
+  if (!info) return null;
+  const parts = extractLocationParts(info);
+  return {
+    ...info,
+    ...parts
+  };
+};
+
 const buildLocationPayload = (info) => {
   if (!info) return null;
   const lat = typeof info.lat === 'string' ? parseFloat(info.lat) : info.lat;
   const lng = typeof info.lng === 'string' ? parseFloat(info.lng) : info.lng;
+  const enriched = enrichLocationInfo(info);
+  const addressDetails = enriched?.addressDetails || getAddressObject(info);
   return {
     name: info.name || info.displayName || 'Seçilen Konum',
     displayName: info.displayName || formatAddress(info) || info.name || 'Seçilen Konum',
@@ -35,7 +80,10 @@ const buildLocationPayload = (info) => {
     lng,
     source: info.source || 'manual',
     mapUrl: `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`,
-    boundingbox: info.boundingbox || null
+    boundingbox: info.boundingbox || null,
+    city: enriched?.city || '',
+    district: enriched?.district || '',
+    addressDetails: addressDetails && Object.keys(addressDetails).length > 0 ? addressDetails : null
   };
 };
 
@@ -82,17 +130,52 @@ const LocationPickerModal = ({ isOpen, onClose, onSelect, initialLocation }) => 
           markerRef.current = L.marker([selectedPosition.lat, selectedPosition.lng]).addTo(mapInstanceRef.current);
         }
 
-        mapInstanceRef.current.on('click', (event) => {
+        mapInstanceRef.current.on('click', async (event) => {
           const { lat: clickedLat, lng: clickedLng } = event.latlng;
+          if (isCancelled) return;
           setSelectedPosition({ lat: clickedLat, lng: clickedLng });
-          setSelectedInfo({
-            name: 'Seçilen Konum',
-            displayName: `Koordinatlar: ${clickedLat.toFixed(5)}, ${clickedLng.toFixed(5)}`,
-            address: '',
-            lat: clickedLat,
-            lng: clickedLng,
-            source: 'manual'
-          });
+          try {
+            const response = await fetch(
+              `https://nominatim.openstreetmap.org/reverse?format=json&addressdetails=1&lat=${clickedLat}&lon=${clickedLng}`,
+              {
+                headers: {
+                  Accept: 'application/json',
+                  'User-Agent': 'aktifite-app/1.0'
+                }
+              }
+            );
+
+            if (!response.ok) {
+              throw new Error('Reverse geocode isteği başarısız oldu');
+            }
+
+            const data = await response.json();
+            if (isCancelled) return;
+            const enrichedInfo = enrichLocationInfo({
+              name: data.name || data.display_name?.split(',')[0] || 'Seçilen Konum',
+              displayName: data.display_name || '',
+              address: formatAddress(data),
+              lat: clickedLat,
+              lng: clickedLng,
+              source: 'reverse',
+              addressDetails: data.address || null,
+              boundingbox: data.boundingbox || null
+            });
+            setSelectedInfo(enrichedInfo);
+          } catch (error) {
+            console.error('Ters geocode başarısız oldu:', error);
+            if (isCancelled) return;
+            setSelectedInfo(
+              enrichLocationInfo({
+                name: 'Seçilen Konum',
+                displayName: `Koordinatlar: ${clickedLat.toFixed(5)}, ${clickedLng.toFixed(5)}`,
+                address: '',
+                lat: clickedLat,
+                lng: clickedLng,
+                source: 'manual'
+              })
+            );
+          }
         });
 
         setMapReady(true);
@@ -175,15 +258,18 @@ const LocationPickerModal = ({ isOpen, onClose, onSelect, initialLocation }) => 
     const lat = parseFloat(result.lat);
     const lng = parseFloat(result.lon);
     setSelectedPosition({ lat, lng });
-    setSelectedInfo({
-      name: result.display_name?.split(',')[0] || 'Seçilen Konum',
-      displayName: result.display_name || '',
-      address: formatAddress(result),
-      lat,
-      lng,
-      source: 'search',
-      boundingbox: result.boundingbox || null
-    });
+    setSelectedInfo(
+      enrichLocationInfo({
+        name: result.display_name?.split(',')[0] || 'Seçilen Konum',
+        displayName: result.display_name || '',
+        address: formatAddress(result),
+        lat,
+        lng,
+        source: 'search',
+        boundingbox: result.boundingbox || null,
+        addressDetails: result.address || null
+      })
+    );
     if (mapInstanceRef.current) {
       mapInstanceRef.current.flyTo([lat, lng], 15);
     }

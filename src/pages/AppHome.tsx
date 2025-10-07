@@ -111,12 +111,7 @@ const SportsApp = () => {
 
   const sports = Object.keys(sportEmojis);
 
-  const cities = [
-    'İstanbul (Avrupa)',
-    'İstanbul (Asya)',
-    'Ankara',
-    'İzmir'
-  ];
+  const [cityOptions, setCityOptions] = useState([]);
 
   const [messages, setMessages] = useState([
     {
@@ -207,6 +202,9 @@ const SportsApp = () => {
 
       const mapped = data.map((act) => {
         const locationInfo = normalizeLocationDetails(act.location);
+        const cityLabel = locationInfo.city || act.city || '';
+        const districtLabel = locationInfo.district || '';
+        const combinedLocationLabel = [cityLabel, districtLabel].filter(Boolean).join(' / ') || locationInfo.name;
 
         return {
           id: act.id,
@@ -214,9 +212,10 @@ const SportsApp = () => {
           title: act.title,
           date: act.date,
           time: act.time,
-          location: locationInfo.name,
+          location: combinedLocationLabel,
           locationDetails: locationInfo.details,
-          city: act.city,
+          city: cityLabel,
+          district: districtLabel,
           maxParticipants: act.max_participants,
           currentParticipants: act.participants?.length || 0,
           createdBy: { id: act.organizer_id, name: 'Organizatör', avatar: '👤' },
@@ -231,6 +230,15 @@ const SportsApp = () => {
       });
 
       setActivities(mapped);
+      setCityOptions(
+        Array.from(
+          new Set(
+            mapped
+              .map((item) => item.city)
+              .filter((value) => typeof value === 'string' && value.trim().length > 0)
+          )
+        ).sort()
+      );
     };
 
     fetchActivities();
@@ -246,7 +254,8 @@ const SportsApp = () => {
     date: '',
     startTime: '',
     endTime: '',
-    city: 'Ankara',
+    city: '',
+    district: '',
     maxParticipants: 2,
     description: '',
     locationDetails: null
@@ -261,44 +270,67 @@ const SportsApp = () => {
 
   const normalizeLocationDetails = (rawLocation) => {
     if (!rawLocation) {
-      return { name: '', details: null };
+      return { name: '', details: null, city: '', district: '' };
     }
 
-    if (typeof rawLocation === 'object' && !Array.isArray(rawLocation)) {
-      const lat = rawLocation.lat !== undefined ? (typeof rawLocation.lat === 'string' ? parseFloat(rawLocation.lat) : rawLocation.lat) : null;
-      const lng = rawLocation.lng !== undefined ? (typeof rawLocation.lng === 'string' ? parseFloat(rawLocation.lng) : rawLocation.lng) : null;
+    const parseLocationObject = (locationObject) => {
+      const lat =
+        locationObject.lat !== undefined
+          ? (typeof locationObject.lat === 'string' ? parseFloat(locationObject.lat) : locationObject.lat)
+          : null;
+      const lng =
+        locationObject.lng !== undefined
+          ? (typeof locationObject.lng === 'string' ? parseFloat(locationObject.lng) : locationObject.lng)
+          : null;
+      const addressDetails = locationObject.addressDetails || locationObject.address || {};
+      const cityCandidate =
+        locationObject.city ||
+        addressDetails.city ||
+        addressDetails.town ||
+        addressDetails.village ||
+        addressDetails.municipality ||
+        addressDetails.state_district ||
+        addressDetails.state ||
+        '';
+      const districtCandidate =
+        locationObject.district ||
+        addressDetails.district ||
+        addressDetails.county ||
+        addressDetails.suburb ||
+        addressDetails.neighbourhood ||
+        addressDetails.village ||
+        '';
+      const combinedLocationLabel = [cityCandidate, districtCandidate].filter(Boolean).join(' / ');
+
       return {
-        name: rawLocation.name || rawLocation.displayName || '',
+        name: combinedLocationLabel || locationObject.name || locationObject.displayName || '',
         details: {
-          ...rawLocation,
+          ...locationObject,
           lat,
           lng
-        }
+        },
+        city: cityCandidate,
+        district: districtCandidate
       };
+    };
+
+    if (typeof rawLocation === 'object' && !Array.isArray(rawLocation)) {
+      return parseLocationObject(rawLocation);
     }
 
     if (typeof rawLocation === 'string') {
       try {
         const parsed = JSON.parse(rawLocation);
-        const lat = parsed?.lat !== undefined ? (typeof parsed.lat === 'string' ? parseFloat(parsed.lat) : parsed.lat) : null;
-        const lng = parsed?.lng !== undefined ? (typeof parsed.lng === 'string' ? parseFloat(parsed.lng) : parsed.lng) : null;
         if (parsed && typeof parsed === 'object') {
-          return {
-            name: parsed.name || parsed.displayName || rawLocation,
-            details: {
-              ...parsed,
-              lat,
-              lng
-            }
-          };
+          return parseLocationObject(parsed);
         }
       } catch (error) {
-        return { name: rawLocation, details: null };
+        return { name: rawLocation, details: null, city: '', district: '' };
       }
-      return { name: rawLocation, details: null };
+      return { name: rawLocation, details: null, city: '', district: '' };
     }
 
-    return { name: '', details: null };
+    return { name: '', details: null, city: '', district: '' };
   };
 
   const handleProfileImageUpload = (e) => {
@@ -365,6 +397,8 @@ const SportsApp = () => {
 
     setNewActivity((prev) => ({
       ...prev,
+      city: enhancedLocation.city || prev.city,
+      district: enhancedLocation.district || prev.district,
       locationDetails: enhancedLocation
     }));
   };
@@ -461,7 +495,14 @@ const SportsApp = () => {
   };
 
   const handleCreateActivity = async () => {
-    if (!newActivity.title || !newActivity.date || !newActivity.startTime || !newActivity.endTime || !newActivity.locationDetails?.name) {
+    if (
+      !newActivity.title ||
+      !newActivity.date ||
+      !newActivity.startTime ||
+      !newActivity.endTime ||
+      !newActivity.locationDetails?.name ||
+      !newActivity.city
+    ) {
       alert('Lütfen tüm gerekli alanları doldurun!');
       return;
     }
@@ -514,24 +555,35 @@ const SportsApp = () => {
       console.error('Organizatör katılımcı olarak eklenemedi:', participantError);
     }
 
+    const combinedLocationLabel = [newActivity.city, newActivity.district].filter(Boolean).join(' / ');
     const activity = {
       id: data.id,
       sport: data.sport_type,
       title: data.title,
       date: data.date,
       time: data.time,
-      location: locationPayload?.name || newActivity.locationDetails?.name || '',
-      locationDetails: locationPayload,
-      city: data.city,
+      location: combinedLocationLabel,
+      locationDetails: locationPayload || newActivity.locationDetails,
+      city: newActivity.city,
+      district: newActivity.district,
       maxParticipants: data.max_participants,
       currentParticipants: 1,
-      createdBy: currentUser,
-      participants: [currentUser],
+      createdBy: { id: currentUser.id, name: currentUser.name, avatar: currentUser.avatar },
+      participants: [
+        { id: currentUser.id, name: currentUser.name, avatar: currentUser.avatar }
+      ],
       requests: [],
       description: data.description || ''
     };
 
-    setActivities([...activities, activity]);
+    setActivities([activity, ...activities]);
+    setCityOptions((prev) => {
+      const next = new Set(prev);
+      if (newActivity.city) {
+        next.add(newActivity.city);
+      }
+      return Array.from(next).sort();
+    });
 
     const newNotification = {
       id: notifications.length + 1,
@@ -550,7 +602,8 @@ const SportsApp = () => {
       date: '',
       startTime: '',
       endTime: '',
-      city: 'Ankara',
+      city: '',
+      district: '',
       maxParticipants: 2,
       description: '',
       locationDetails: null
@@ -679,9 +732,12 @@ const SportsApp = () => {
   const filteredActivities = activities.filter(activity => {
     const matchesSport = filterSport === 'all' || activity.sport === filterSport;
     const matchesCity = filterCity === 'all' || activity.city === filterCity;
-    const matchesSearch = activity.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          activity.sport.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          (activity.location || '').toLowerCase().includes(searchTerm.toLowerCase());
+    const searchValue = searchTerm.toLowerCase();
+    const matchesSearch =
+      activity.title.toLowerCase().includes(searchValue) ||
+      activity.sport.toLowerCase().includes(searchValue) ||
+      (activity.location || '').toLowerCase().includes(searchValue) ||
+      (activity.district || '').toLowerCase().includes(searchValue);
     return matchesSport && matchesCity && matchesSearch;
   });
 
@@ -732,8 +788,9 @@ const SportsApp = () => {
           </div>
           <div className="flex items-center gap-2">
             <MapPin className="w-3 h-3 sm:w-4 sm:h-4 text-gray-500" />
-            <span className="text-xs sm:text-sm">{activity.location}</span>
-            <span className="text-[10px] sm:text-xs text-gray-500">({activity.city})</span>
+            <span className="text-xs sm:text-sm">
+              {[activity.city, activity.district].filter(Boolean).join(' / ') || activity.location}
+            </span>
           </div>
           <div className="flex items-center gap-2">
             <Users className="w-3 h-3 sm:w-4 sm:h-4 text-gray-500" />
@@ -982,13 +1039,13 @@ const SportsApp = () => {
                   <select
                     value={filterCity}
                     onChange={(e) => setFilterCity(e.target.value)}
-                    className="flex-1 sm:flex-none px-3 sm:px-4 py-2 text-sm sm:text-base border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  >
-                    <option value="all">Tüm Şehirler</option>
-                    {cities.map(city => (
-                      <option key={city} value={city}>{city}</option>
-                    ))}
-                  </select>
+                  className="flex-1 sm:flex-none px-3 sm:px-4 py-2 text-sm sm:text-base border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                >
+                  <option value="all">Tüm Şehirler</option>
+                  {cityOptions.map(city => (
+                    <option key={city} value={city}>{city}</option>
+                  ))}
+                </select>
                   <select
                     value={filterSport}
                     onChange={(e) => setFilterSport(e.target.value)}
@@ -1275,16 +1332,15 @@ const SportsApp = () => {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                 <div>
-                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-2">Şehir</label>
-                  <select
-                    value={newActivity.city}
-                    onChange={(e) => setNewActivity({...newActivity, city: e.target.value})}
-                    className="w-full px-3 sm:px-4 py-2 text-sm sm:text-base border rounded-lg focus:ring-2 focus:ring-blue-500"
-                  >
-                    {cities.map(city => (
-                      <option key={city} value={city}>{city}</option>
-                    ))}
-                  </select>
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-2">Şehir / İlçe</label>
+                  <input
+                    type="text"
+                    value={[newActivity.city, newActivity.district].filter(Boolean).join(' / ')}
+                    readOnly
+                    placeholder="Haritadan konum seçildiğinde otomatik dolacak"
+                    className="w-full px-3 sm:px-4 py-2 text-sm sm:text-base border rounded-lg bg-gray-50 focus:outline-none"
+                  />
+                  <p className="text-[11px] sm:text-xs text-gray-500 mt-1">Konumu haritadan seçerek şehir ve ilçeyi otomatik doldurun.</p>
                 </div>
                 <div>
                   <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-2">Konum</label>
