@@ -29,6 +29,7 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import LocationPickerModal from '@/components/LocationPickerModal';
 import LocationPreviewModal from '@/components/LocationPreviewModal';
+import { TURKISH_PROVINCES } from '@/data/turkeyProvinces';
 
 const PRIORITY_CITIES = ['İstanbul', 'İzmir', 'Ankara'];
 
@@ -272,6 +273,8 @@ const SportsApp = () => {
     description: '',
     locationDetails: null
   });
+  const [isManualCityEnabled, setIsManualCityEnabled] = useState(false);
+  const [isManualDistrictEnabled, setIsManualDistrictEnabled] = useState(false);
 
   const [isLocationPickerOpen, setIsLocationPickerOpen] = useState(false);
   const [locationPreview, setLocationPreview] = useState(null);
@@ -508,13 +511,19 @@ const SportsApp = () => {
     const locationCity = normalizedLocation.city || '';
 
     setNewActivity((prev) => {
-      const resolvedCity = locationCity || prev.city || '';
-      const resolvedDistrict = locationDistrict || prev.district || '';
+      const mapCityValue = locationCity || '';
+      const mapDistrictValue = locationDistrict || '';
+      const resolvedCity = isManualCityEnabled
+        ? (prev.city || mapCityValue || '')
+        : mapCityValue || prev.city || '';
+      const resolvedDistrict = isManualDistrictEnabled
+        ? (prev.district || mapDistrictValue || '')
+        : mapDistrictValue || prev.district || '';
       const baseDetails = {
         ...(location || {}),
         ...(normalizedLocation.details || {}),
-        city: resolvedCity,
-        district: resolvedDistrict
+        city: mapCityValue,
+        district: mapDistrictValue
       };
 
       const hasManualImage =
@@ -551,11 +560,51 @@ const SportsApp = () => {
         locationDetails: {
           ...baseDetails,
           ...imageData,
-          city: resolvedCity,
-          district: resolvedDistrict
+          city: mapCityValue,
+          district: mapDistrictValue
         }
       };
     });
+  };
+
+  const handleManualCityToggle = (checked) => {
+    setIsManualCityEnabled(checked);
+    setNewActivity((prev) => {
+      const mapCityValue = prev.locationDetails?.city || '';
+      if (checked) {
+        const nextCity = prev.city && prev.city.trim().length > 0 ? prev.city : mapCityValue;
+        return { ...prev, city: nextCity };
+      }
+      return { ...prev, city: mapCityValue };
+    });
+  };
+
+  const handleManualDistrictToggle = (checked) => {
+    setIsManualDistrictEnabled(checked);
+    setNewActivity((prev) => {
+      const mapDistrictValue = prev.locationDetails?.district || '';
+      if (checked) {
+        const nextDistrict = prev.district && prev.district.trim().length > 0 ? prev.district : mapDistrictValue;
+        return { ...prev, district: nextDistrict };
+      }
+      return { ...prev, district: mapDistrictValue };
+    });
+  };
+
+  const handleManualCityChange = (value) => {
+    setNewActivity((prev) => ({
+      ...prev,
+      city: value,
+      locationDetails: prev.locationDetails ? { ...prev.locationDetails } : null
+    }));
+  };
+
+  const handleManualDistrictChange = (value) => {
+    setNewActivity((prev) => ({
+      ...prev,
+      district: value,
+      locationDetails: prev.locationDetails ? { ...prev.locationDetails } : null
+    }));
   };
 
   const handleLocationImageUpload = (event) => {
@@ -703,8 +752,10 @@ const SportsApp = () => {
     const timeRange = `${newActivity.startTime} - ${newActivity.endTime}`;
 
     const normalizedLocation = normalizeLocationDetails(newActivity.locationDetails);
-    const finalCity = newActivity.city || normalizedLocation.city;
-    const finalDistrict = newActivity.district || normalizedLocation.district || '';
+    const manualCity = (newActivity.city || '').trim();
+    const manualDistrict = (newActivity.district || '').trim();
+    const finalCity = isManualCityEnabled && manualCity ? manualCity : normalizedLocation.city;
+    const finalDistrict = isManualDistrictEnabled && manualDistrict ? manualDistrict : normalizedLocation.district || '';
 
     if (!finalCity) {
       alert('Lütfen haritadan il bilgisini içeren bir konum seçin.');
@@ -801,6 +852,8 @@ const SportsApp = () => {
       description: '',
       locationDetails: null
     });
+    setIsManualCityEnabled(false);
+    setIsManualDistrictEnabled(false);
     setCurrentView('home');
   };
 
@@ -1628,6 +1681,68 @@ const SportsApp = () => {
                   />
                   <p className="mt-1 text-[11px] sm:text-xs text-gray-500">
                     İlçe bilgisi seçtiğiniz konumdan otomatik olarak doldurulur.
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs sm:text-sm font-medium text-gray-700">İl (Manuel)</label>
+                    <label className="flex items-center gap-2 text-[11px] sm:text-xs text-gray-500">
+                      <input
+                        type="checkbox"
+                        checked={isManualCityEnabled}
+                        onChange={(e) => handleManualCityToggle(e.target.checked)}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      Manuel seç
+                    </label>
+                  </div>
+                  <select
+                    value={newActivity.city}
+                    onChange={(e) => handleManualCityChange(e.target.value)}
+                    disabled={!isManualCityEnabled}
+                    className={`w-full px-3 sm:px-4 py-2 text-sm sm:text-base border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                      isManualCityEnabled ? '' : 'bg-gray-50 text-gray-500 cursor-not-allowed'
+                    }`}
+                  >
+                    <option value="">İl seçin</option>
+                    {TURKISH_PROVINCES.map((province) => (
+                      <option key={province} value={province}>
+                        {province}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-[11px] sm:text-xs text-gray-500">
+                    Haritada gelen şehir bilgisini değiştirmek isterseniz manuel seçim yapabilirsiniz.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs sm:text-sm font-medium text-gray-700">İlçe (Manuel)</label>
+                    <label className="flex items-center gap-2 text-[11px] sm:text-xs text-gray-500">
+                      <input
+                        type="checkbox"
+                        checked={isManualDistrictEnabled}
+                        onChange={(e) => handleManualDistrictToggle(e.target.checked)}
+                        className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                      />
+                      Manuel seç
+                    </label>
+                  </div>
+                  <input
+                    type="text"
+                    value={newActivity.district}
+                    onChange={(e) => handleManualDistrictChange(e.target.value)}
+                    disabled={!isManualDistrictEnabled}
+                    placeholder="İlçe adı girin"
+                    className={`w-full px-3 sm:px-4 py-2 text-sm sm:text-base border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent ${
+                      isManualDistrictEnabled ? '' : 'bg-gray-50 text-gray-500 cursor-not-allowed'
+                    }`}
+                  />
+                  <p className="text-[11px] sm:text-xs text-gray-500">
+                    İlçe bilgisini gerektiğinde manuel olarak düzenleyebilirsiniz.
                   </p>
                 </div>
               </div>
