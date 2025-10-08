@@ -29,7 +29,6 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import LocationPickerModal from '@/components/LocationPickerModal';
 import LocationPreviewModal from '@/components/LocationPreviewModal';
-import { TURKISH_PROVINCES } from '@/data/turkeyProvinces';
 
 const PRIORITY_CITIES = ['İstanbul', 'İzmir', 'Ankara'];
 
@@ -131,8 +130,6 @@ const SportsApp = () => {
   const sports = Object.keys(sportEmojis);
 
   const [cityOptions, setCityOptions] = useState([]);
-
-  const provinceOptions = useMemo(() => sortCitiesWithPriority([...TURKISH_PROVINCES]), []);
 
   const [messages, setMessages] = useState([
     {
@@ -698,11 +695,6 @@ const SportsApp = () => {
       return;
     }
 
-    if (!newActivity.city) {
-      alert('Lütfen bir il seçin.');
-      return;
-    }
-
     if (newActivity.startTime >= newActivity.endTime) {
       alert('Başlangıç saati bitiş saatinden önce olmalı!');
       return;
@@ -713,6 +705,11 @@ const SportsApp = () => {
     const normalizedLocation = normalizeLocationDetails(newActivity.locationDetails);
     const finalCity = newActivity.city || normalizedLocation.city;
     const finalDistrict = newActivity.district || normalizedLocation.district || '';
+
+    if (!finalCity) {
+      alert('Lütfen haritadan il bilgisini içeren bir konum seçin.');
+      return;
+    }
 
     const locationPayloadForStorage = sanitizeLocationDetailsForStorage(
       newActivity.locationDetails,
@@ -1608,29 +1605,6 @@ const SportsApp = () => {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                 <div>
-                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-2">İl</label>
-                  <select
-                    value={newActivity.city}
-                    onChange={(e) =>
-                      setNewActivity((prev) => ({
-                        ...prev,
-                        city: e.target.value,
-                        locationDetails: prev.locationDetails
-                          ? { ...prev.locationDetails, city: e.target.value }
-                          : prev.locationDetails
-                      }))
-                    }
-                    className="w-full px-3 sm:px-4 py-2 text-sm sm:text-base border rounded-lg focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="">İl seçin</option>
-                    {provinceOptions.map((province) => (
-                      <option key={province} value={province}>
-                        {province}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
                   <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-2">İl (Harita)</label>
                   <input
                     type="text"
@@ -1640,7 +1614,20 @@ const SportsApp = () => {
                     className="w-full px-3 sm:px-4 py-2 text-sm sm:text-base border rounded-lg bg-gray-50 text-gray-600"
                   />
                   <p className="mt-1 text-[11px] sm:text-xs text-gray-500">
-                    İl bilgisi harita üzerinden seçtiğiniz konumdan otomatik alınır. Gerekirse yukarıdaki listeden manuel olarak il seçebilirsiniz.
+                    İl bilgisi harita üzerinden seçtiğiniz konumdan otomatik alınır.
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-xs sm:text-sm font-medium text-gray-700 mb-1 sm:mb-2">İlçe (Harita)</label>
+                  <input
+                    type="text"
+                    value={newActivity.locationDetails?.district || newActivity.district || ''}
+                    readOnly
+                    placeholder="İlçe bilgisi haritadan otomatik alınır"
+                    className="w-full px-3 sm:px-4 py-2 text-sm sm:text-base border rounded-lg bg-gray-50 text-gray-600"
+                  />
+                  <p className="mt-1 text-[11px] sm:text-xs text-gray-500">
+                    İlçe bilgisi seçtiğiniz konumdan otomatik olarak doldurulur.
                   </p>
                 </div>
               </div>
